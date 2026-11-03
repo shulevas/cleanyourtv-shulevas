@@ -125,6 +125,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private long idleClockMs;
     /** Back on Home opens ClockActivity (config.xml, back_opens_clock). */
     private boolean backOpensClock;
+    /** Back on Home starts the TV's screensaver (config.xml, back_opens_screensaver); wins over backOpensClock. */
+    private boolean backOpensScreensaver;
     private final Runnable showIdleClock = () -> startActivity(new Intent(this, ClockActivity.class));
     private String liveTvAction;
     private String liveTvInputId;
@@ -478,6 +480,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         liveTvPkg = cfg.liveTvPackage;
         idleClockMs = cfg.homeIdleClockMinutes * MINUTE_MS;
         backOpensClock = cfg.backOpensClock;
+        backOpensScreensaver = cfg.backOpensScreensaver;
         bootToLiveTv = cfg.bootToLiveTv;
         openOnStartChoice = cfg.openOnStartChoice;
         openOnStartWaitMs = cfg.openOnStartNetworkWait * 1000L;
@@ -836,6 +839,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             libraryFromTopBar = true;   // closing it goes back to this button, not to the pill after the last row
         });
         btnLibraryTop.setVisibility(cfg.libraryButton && cfg.appLibrary ? View.VISIBLE : View.GONE);
+        btnScreensaver = findViewById(R.id.btnScreensaver);
+        btnScreensaver.setOnClickListener(v -> open(RemoteKeys.screensaver(this)));
+        btnScreensaver.setVisibility(cfg.screensaverButton && !cfg.topMenu ? View.VISIBLE : View.GONE);
         addTopBarApps(cfg.topBarApps, cfg.launchActions);
         iconOnlyButtons = cfg.iconOnlyButtons;
         topMenu = cfg.topMenu;
@@ -870,6 +876,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (cfg.wifiLabelWidth > 0) btnWifi.setMaxWidth(Math.round(cfg.wifiLabelWidth * density));
             else makeIconOnly(btnWifi);
             makeIconOnly((TextView) btnSettings);
+            makeIconOnly((TextView) btnScreensaver);
         }
         if (cfg.iconOnlyInputs) makeIconOnly((TextView) btnInputs);
         iconOnlyVpn = vpnPill && cfg.iconOnlyVpn;
@@ -906,9 +913,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnSettings.setOnKeyListener(pillKeys);
         btnReorder.setOnKeyListener(pillKeys);
         btnLibraryTop.setOnKeyListener(pillKeys);
+        btnScreensaver.setOnKeyListener(pillKeys);
         for (View button : topAppButtons) button.setOnKeyListener(pillKeys);
         if (advancedEffects) {
-            List<View> pills = new ArrayList<>(Arrays.asList(btnInputs, btnWifi, btnVpn, btnReorder, btnLibraryTop, btnSettings));
+            List<View> pills = new ArrayList<>(Arrays.asList(btnInputs, btnWifi, btnVpn, btnReorder, btnLibraryTop, btnScreensaver, btnSettings));
             pills.addAll(topAppButtons);
             for (View button : pills) {
                 button.setOnFocusChangeListener((view, focused) -> view.animate()
@@ -1744,8 +1752,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        // Home screen: Back goes nowhere, unless back_opens_clock is on.
-        if (backOpensClock) startActivity(new Intent(this, ClockActivity.class));
+        // Home screen: Back goes nowhere, unless back_opens_screensaver or back_opens_clock is on.
+        if (backOpensScreensaver) open(RemoteKeys.screensaver(this));
+        else if (backOpensClock) startActivity(new Intent(this, ClockActivity.class));
     }
 
     // ---- glass highlight -------------------------------------------------------------------------
@@ -3025,6 +3034,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private ColorStateList wifiNoInternetTint, wifiOfflineTint;
     /** The app library button in the top bar (library_button). */
     private View btnLibraryTop;
+    /** The Screensaver pill in the top bar (screensaver_button). */
+    private View btnScreensaver;
     /** The open library came from that button: closing it returns there instead of scrolling to the grid's end. */
     private boolean libraryFromTopBar;
     /** The open library came from the VPN pill (vpn_pill, no VPN app): closing it returns there while the pill still shows. */
@@ -3836,6 +3847,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Some firmware has no App info page at all; a row that only toasts "can't open" helps nobody.
         Intent info = SystemSettings.appInfo(this, pkg);
         if (info != null) addSettingsMenuRow(rows, popup, R.string.library_app_info, () -> open(info));
+        Intent uninstall = uninstallIntent(pkg);
+        if (uninstall != null) addSettingsMenuRow(rows, popup, R.string.tile_uninstall, () -> open(uninstall));
         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
         popup.setWidth(Math.max((int) (200 * density), panel.getMeasuredWidth()));
         // Dock tiles sit near the bottom of the screen: open the menu above the tile when it would not fit below.
@@ -3854,6 +3867,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     .setInterpolator(new android.view.animation.DecelerateInterpolator(1.6f)).start();
         }
         rows.getChildAt(0).requestFocus();
+    }
+
+    /** The system's uninstall dialog for an app the owner installed; null for a system app, which App info can
+     *  only disable, and where no installer answers. The package receiver drops the tile once it is gone. */
+    private Intent uninstallIntent(String pkg) {
+        try {
+            if ((getPackageManager().getApplicationInfo(pkg, 0).flags & ApplicationInfo.FLAG_SYSTEM) != 0) return null;
+        } catch (PackageManager.NameNotFoundException e) {
+            return null;
+        }
+        Intent i = new Intent(Intent.ACTION_DELETE, Uri.fromParts("package", pkg, null));
+        return i.resolveActivity(getPackageManager()) != null ? i : null;
     }
 
     private void addSettingsMenuRow(LinearLayout rows, PopupWindow popup, int title, Runnable action) {

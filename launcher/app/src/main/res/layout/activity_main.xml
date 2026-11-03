@@ -373,6 +373,14 @@
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
+                    android:id="@+id/btnScreensaver"
+                    style="@style/TopButton"
+                    android:visibility="gone"
+                    android:text="@string/screensaver"
+                    android:drawableStart="@drawable/ic_screensaver"
+                    android:nextFocusDown="@+id/grid" />
+
+                <TextView
                     android:id="@+id/btnSettings"
                     style="@style/TopButton"
                     android:text="@string/settings"

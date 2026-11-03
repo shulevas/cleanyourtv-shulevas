@@ -136,6 +136,10 @@ final class Config {
     final boolean iconOnlyVpn;
     /** Back on the Home screen opens the clock screensaver instead of doing nothing (config.xml / theme back_opens_clock). */
     final boolean backOpensClock;
+    /** Back on the Home screen starts the TV's own screensaver; wins over backOpensClock (config.xml / theme back_opens_screensaver). */
+    final boolean backOpensScreensaver;
+    /** A Screensaver pill in the top bar that starts the TV's own screensaver (config.xml / theme screensaver_button). */
+    final boolean screensaverButton;
     /** The ambient glow takes a new app's colour in one frame instead of dipping and fading (config.xml / theme glow_snap). */
     final boolean glowSnap;
     /** App library as a round button in the top bar (config.xml library_button); needs app_library. */
@@ -290,7 +294,8 @@ final class Config {
                    boolean keyFilter, boolean dockGlass, String glowStyle, boolean wallpaperCaptions,
                    boolean handleViewInputs, boolean tileMenu, boolean dockEvenPadding, boolean dockBand, boolean cinematicDots, boolean cinematicWhiteFocus, boolean wifiStatusColor, int cinematicScrim, int cinematicArt,
                    Map<String, Set<String>> wallpaperMoods, boolean gamepadPassthrough, boolean consumeVolumeKeys, boolean powerOnHome, boolean homeLongPressHome, boolean wifiStatusWarnings, List<String> topBarApps, boolean showGreeting, boolean headerWhite, boolean clockWallpaper, int clockWallpaperDim, boolean clockGlow, String glassStyle, boolean singleRow, boolean dockBandAll, boolean lunarDate, int lunarUtcOffset, boolean dateBelowClock, boolean vpnPill, String locale, boolean powerOnHomeAlways, boolean inputsConnectedOnly,
-                   int openOnStartNetworkWait, boolean openOnStartOnWake, boolean iconOnlyVpn, String clockFormat, boolean backOpensClock, boolean glowSnap) {
+                   int openOnStartNetworkWait, boolean openOnStartOnWake, boolean iconOnlyVpn, String clockFormat, boolean backOpensClock, boolean glowSnap,
+                   boolean backOpensScreensaver, boolean screensaverButton) {
         this.handleViewInputs = handleViewInputs;
         this.tileMenu = tileMenu;
         this.inputKeycodes = inputKeycodes;
@@ -341,6 +346,8 @@ final class Config {
         this.iconOnlyInputs = iconOnlyInputs;
         this.iconOnlyVpn = iconOnlyVpn;
         this.backOpensClock = backOpensClock;
+        this.backOpensScreensaver = backOpensScreensaver;
+        this.screensaverButton = screensaverButton;
         this.glowSnap = glowSnap;
         this.libraryButton = libraryButton;
         this.showLibraryPill = showLibraryPill;
@@ -471,6 +478,8 @@ final class Config {
         boolean iconOnlyInputs = res.getBoolean(R.bool.icon_only_inputs);
         boolean iconOnlyVpn = res.getBoolean(R.bool.icon_only_vpn);
         boolean backOpensClock = res.getBoolean(R.bool.back_opens_clock);
+        boolean backOpensScreensaver = res.getBoolean(R.bool.back_opens_screensaver);
+        boolean screensaverButton = res.getBoolean(R.bool.screensaver_button);
         boolean glowSnap = res.getBoolean(R.bool.glow_snap);
         boolean libraryButton = res.getBoolean(R.bool.library_button);
         boolean showLibraryPill = res.getBoolean(R.bool.show_library_pill);
@@ -584,6 +593,8 @@ final class Config {
             iconOnlyInputs = bool(json, "icon_only_inputs", iconOnlyInputs);
             iconOnlyVpn = bool(json, "icon_only_vpn", iconOnlyVpn);
             backOpensClock = bool(json, "back_opens_clock", backOpensClock);
+            backOpensScreensaver = bool(json, "back_opens_screensaver", backOpensScreensaver);
+            screensaverButton = bool(json, "screensaver_button", screensaverButton);
             glowSnap = bool(json, "glow_snap", glowSnap);
             libraryButton = bool(json, "library_button", libraryButton);
             showLibraryPill = bool(json, "show_library_pill", showLibraryPill);
@@ -710,7 +721,8 @@ final class Config {
                 consumeVolumeKeys, powerOnHome, homeLongPressHome, wifiStatusWarnings, topBarApps, showGreeting, headerWhite, clockWallpaper,
                 Math.max(0, Math.min(90, clockWallpaperDim)), clockGlow, glassStyle, singleRow && dockRow, dockBandAll, lunar, lunarOffset,
                 dateBelowClock, vpnPill, locale, powerOnHomeAlways, inputsConnectedOnly,
-                Math.max(0, Math.min(600, openOnStartNetworkWait)), openOnStartOnWake, iconOnlyVpn, clockFormat, backOpensClock, glowSnap);
+                Math.max(0, Math.min(600, openOnStartNetworkWait)), openOnStartOnWake, iconOnlyVpn, clockFormat, backOpensClock, glowSnap,
+                backOpensScreensaver, screensaverButton);
     }
 
     /**
