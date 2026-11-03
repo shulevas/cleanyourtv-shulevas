@@ -521,6 +521,12 @@
     <!-- A Screensaver pill in the top bar, before Settings, that starts the same screensaver. false hides it; a
          theme can set "screensaver_button": true. -->
     <bool name="screensaver_button">true</bool>
+    <!-- Sport calendar under the clock instead of the date line: the month with a ball or a flag under the days
+         that have tennis or an F1 race, and this week's races and matches beside it, in the TV's time zone.
+         Fetched by the launcher itself (Jolpica, ESPN, protennislive.com) when Home shows and the data is
+         older than 3 hours, kept in files/sport.json for when there is no network. The tournament list is
+         assets/sport_tournaments.json; a copy in the app's external files directory overrides it. -->
+    <bool name="sport_calendar">true</bool>
     <!-- The clock screensaver (Home idle clock and the system screensaver) over Home's wallpaper instead of black with
          a coloured glow. The clock still moves every minute. Can also be set with "clock_wallpaper" in a theme. -->
     <bool name="clock_wallpaper">false</bool>

@@ -1,0 +1,40 @@
+{
+  "_comment": "Tennis tournaments for the Home sport calendar (sport_calendar). Matched against ESPN event names (lowercase substring). tier: slam | m1000 | 500 | finals | olympics | cup. women: also show Women's Singles. atp: protennislive.com id for the official order of play (posting/<year>/<atp>/op.pdf); 0 = none. tz: the tournament's own time zone, for the order of play's local times. Override on the TV: adb push this file to /sdcard/Android/data/com.gathin.tvhome/files/sport_tournaments.json. cups: ESPN has no feed for them; add each year's days by hand, one row per day.",
+  "tournaments": [
+    {"label": "Australian Open", "match": ["australian open"], "tier": "slam", "women": true, "atp": 0, "tz": "Australia/Melbourne"},
+    {"label": "Roland Garros", "match": ["roland garros", "french open"], "tier": "slam", "women": true, "atp": 0, "tz": "Europe/Paris"},
+    {"label": "Wimbledon", "match": ["wimbledon"], "tier": "slam", "women": true, "atp": 0, "tz": "Europe/London"},
+    {"label": "US Open", "match": ["us open"], "tier": "slam", "women": true, "atp": 0, "tz": "America/New_York"},
+    {"label": "Olympics", "match": ["olympic"], "tier": "olympics", "women": true, "atp": 0, "tz": "America/Los_Angeles"},
+
+    {"label": "Indian Wells", "match": ["bnp paribas open", "indian wells"], "tier": "m1000", "atp": 404, "tz": "America/Los_Angeles"},
+    {"label": "Miami Open", "match": ["miami open"], "tier": "m1000", "atp": 403, "tz": "America/New_York"},
+    {"label": "Monte-Carlo", "match": ["monte-carlo", "monte carlo"], "tier": "m1000", "atp": 410, "tz": "Europe/Monaco"},
+    {"label": "Madrid Open", "match": ["madrid open"], "tier": "m1000", "atp": 1536, "tz": "Europe/Madrid"},
+    {"label": "Rome", "match": ["internazionali bnl", "italian open"], "tier": "m1000", "atp": 416, "tz": "Europe/Rome"},
+    {"label": "Canadian Open", "match": ["omnium banque nationale", "national bank open", "canadian open"], "tier": "m1000", "atp": 421, "tz": "America/Toronto"},
+    {"label": "Cincinnati", "match": ["cincinnati"], "tier": "m1000", "atp": 422, "tz": "America/New_York"},
+    {"label": "Shanghai Masters", "match": ["shanghai masters"], "tier": "m1000", "atp": 5014, "tz": "Asia/Shanghai"},
+    {"label": "Paris Masters", "match": ["paris masters"], "tier": "m1000", "atp": 352, "tz": "Europe/Paris"},
+    {"label": "ATP Finals", "match": ["atp finals"], "tier": "finals", "atp": 605, "tz": "Europe/Rome"},
+
+    {"label": "Rotterdam", "match": ["abn amro", "rotterdam"], "tier": "500", "atp": 407, "tz": "Europe/Amsterdam"},
+    {"label": "Dallas Open", "match": ["dallas open"], "tier": "500", "atp": 424, "tz": "America/Chicago"},
+    {"label": "Doha", "match": ["qatar exxonmobil", "qatar open"], "tier": "500", "atp": 451, "tz": "Asia/Qatar"},
+    {"label": "Rio Open", "match": ["rio open"], "tier": "500", "atp": 6932, "tz": "America/Sao_Paulo"},
+    {"label": "Dubai", "match": ["dubai duty free"], "tier": "500", "atp": 495, "tz": "Asia/Dubai"},
+    {"label": "Acapulco", "match": ["abierto mexicano", "acapulco"], "tier": "500", "atp": 807, "tz": "America/Mexico_City"},
+    {"label": "Barcelona", "match": ["barcelona open", "conde de godo"], "tier": "500", "atp": 425, "tz": "Europe/Madrid"},
+    {"label": "Munich", "match": ["bmw open"], "tier": "500", "atp": 308, "tz": "Europe/Berlin"},
+    {"label": "Halle", "match": ["terra wortmann", "halle"], "tier": "500", "atp": 500, "tz": "Europe/Berlin"},
+    {"label": "Queen's", "match": ["queen's club", "hsbc championships", "cinch championships"], "tier": "500", "atp": 311, "tz": "Europe/London"},
+    {"label": "Hamburg", "match": ["hamburg open"], "tier": "500", "atp": 414, "tz": "Europe/Berlin"},
+    {"label": "Washington", "match": ["citi open", "mubadala citi"], "tier": "500", "atp": 418, "tz": "America/New_York"},
+    {"label": "Beijing", "match": ["china open"], "tier": "500", "atp": 747, "tz": "Asia/Shanghai"},
+    {"label": "Tokyo", "match": ["japan open", "kinoshita group japan"], "tier": "500", "atp": 329, "tz": "Asia/Tokyo"},
+    {"label": "Basel", "match": ["swiss indoors"], "tier": "500", "atp": 328, "tz": "Europe/Zurich"},
+    {"label": "Vienna", "match": ["erste bank open"], "tier": "500", "atp": 337, "tz": "Europe/Vienna"}
+  ],
+  "cups": [
+  ]
+}

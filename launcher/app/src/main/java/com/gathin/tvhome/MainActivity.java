@@ -434,6 +434,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         public void run() {
             updateGreeting();
             updatePanel();
+            if (sportView != null) {
+                sportView.tick();
+                refreshSportIfStale(false);
+            }
             // The pill follows the network callbacks and each return to Home; only the festive light follows the
             // signal level, so only it needs this minute's binder calls (about 7 ms on the UI thread).
             if (festive) updateWifiLabel();
@@ -597,6 +601,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             lunarDate.setTextSize(11f);
             date.setPadding(0, (int) (4 * density), 0, 0);
         }
+        if (getResources().getBoolean(R.bool.sport_calendar)) setUpSportCalendar();
         vpnApp = cfg.vpnApp;
         vpnPill = cfg.vpnPill && !cfg.topMenu;
         btnVpn = findViewById(R.id.btnVpn);
@@ -760,6 +765,18 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // game_day: the panel above the dock rides up with the cards instead of being covered by them, and fades
         // out by the time it reaches the clock. The grid's own offset is read, so a jump (Home, a restored focus)
         // lands right too.
+        // sport_calendar: the calendar rides up with the grid and fades out as the cards reach it, like the
+        // game_day panel.
+        if (sportView != null) {
+            grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
+                @Override
+                public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                    int shift = rv.canScrollVertically(-1) ? rv.computeVerticalScrollOffset() : 0;
+                    sportView.setTranslationY(-shift);
+                    sportView.setAlpha(Math.max(0f, 1f - shift / (120f * density)));
+                }
+            });
+        }
         if (gameDay != null) {
             View clockBlock = findViewById(R.id.leftBlock);
             grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
@@ -1130,6 +1147,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         if (showStats) startStats();
         if (gameDay != null) gameDay.start();
+        if (sportView != null) {
+            sportView.tick();
+            refreshSportIfStale(true);
+            schedulePage();
+        }
         sky.update();
         wallpaperPlayer.start();
         handler.postDelayed(minuteTick, MINUTE_MS);
@@ -1311,6 +1333,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         ambient.animate().cancel();
         heroArt.animate().cancel();
         handler.removeCallbacks(minuteTick);
+        handler.removeCallbacks(sportPage);
         handler.removeCallbacks(openWhenOnline);
         startPending = null;   // leaving Home before the network came back: the boot's app stays closed
         stopStats();
@@ -2513,6 +2536,128 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             textLp.gravity = ((TextView) text).getGravity() & Gravity.HORIZONTAL_GRAVITY_MASK;
             text.setLayoutParams(textLp);
         }
+    }
+
+    // ---- sport calendar (sport_calendar) ------------------------------------------------------------------
+
+    private SportCalendarView sportView;
+    private SportFeed sportFeed;
+    private final java.util.concurrent.ExecutorService sportExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private volatile boolean sportRunning;
+    /** Last try, successful or not: a TV without network retries every 15 minutes, not every minute. */
+    private long sportLastTry;
+    private int sportFailures;
+    private static final long SPORT_RETRY_MS = 15 * MINUTE_MS;
+    /** The clock is 12% larger than the stock 52sp when the calendar takes the date's place. */
+    private static final float SPORT_CLOCK_SP = 58f;
+    private final Runnable sportPage = new Runnable() {
+        @Override
+        public void run() {
+            if (sportView == null) return;
+            sportView.tick();
+            schedulePage();
+        }
+    };
+
+    /**
+     * The calendar replaces the date line: the date and the line before it go, the clock grows a little, and the
+     * month and the week's list are drawn under and beside it, lined up with the clock's glyphs.
+     */
+    private void setUpSportCalendar() {
+        View dateColumn = (View) findViewById(R.id.date).getParent();
+        dateColumn.setVisibility(View.GONE);
+        findViewById(R.id.clockDivider).setVisibility(View.GONE);
+        TextView clock = findViewById(R.id.clock);
+        clock.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, SPORT_CLOCK_SP);
+        android.graphics.Typeface regular = getResources().getFont(R.font.outfit_regular);
+        android.graphics.Typeface medium = getResources().getFont(R.font.outfit_medium);
+        sportView = new SportCalendarView(this, regular, medium);
+        // Behind the grid, like the race panel: cards scrolling up pass over it while it fades.
+        ViewGroup rootGroup = (ViewGroup) root;
+        rootGroup.addView(sportView, rootGroup.indexOfChild(findViewById(R.id.racePanel)) + 1,
+                new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        sportFeed = new SportFeed(this);
+        sportView.setData(sportFeed.load());
+        View.OnLayoutChangeListener anchor = (v, l, t, r, b, ol, ot, or, ob) -> anchorSportCalendar();
+        clock.addOnLayoutChangeListener(anchor);
+        greeting.addOnLayoutChangeListener(anchor);
+        findViewById(R.id.topButtons).addOnLayoutChangeListener(anchor);
+    }
+
+    /** Positions from the clock: its first glyph's left edge and its baseline (approved mockup, 1080p px / 2). */
+    private void anchorSportCalendar() {
+        TextView clock = findViewById(R.id.clock);
+        if (clock.getWidth() == 0 || sportView == null) return;
+        int[] rootAt = new int[2], at = new int[2];
+        root.getLocationInWindow(rootAt);
+        clock.getLocationInWindow(at);
+        android.graphics.Rect b = new android.graphics.Rect();
+        CharSequence text = clock.getText();
+        clock.getPaint().getTextBounds(text.toString(), 0, Math.min(1, text.length()), b);
+        float glyphLeft = at[0] - rootAt[0] + clock.getPaddingLeft() + b.left;
+        float baseline = at[1] - rootAt[1] + clock.getBaseline();
+        // The greeting's first glyph on the same edge as the clock's.
+        if (greeting.getVisibility() == View.VISIBLE && greeting.getText().length() > 0) {
+            int[] g = new int[2];
+            greeting.getLocationInWindow(g);
+            android.graphics.Rect gb = new android.graphics.Rect();
+            greeting.getPaint().getTextBounds(greeting.getText().toString(), 0, 1, gb);
+            float greetLeft = g[0] - rootAt[0] - greeting.getTranslationX() + greeting.getPaddingLeft() + gb.left;
+            greeting.setTranslationX(glyphLeft - greetLeft);
+        }
+        View buttons = findViewById(R.id.topButtons);
+        int[] bt = new int[2];
+        buttons.getLocationInWindow(bt);
+        float buttonsLeft = bt[0] - rootAt[0];
+        float listRight = Math.min(685 * density, buttonsLeft - 21 * density);
+        sportView.anchor(glyphLeft, baseline + 17.5f * density, 300 * density, baseline - 20.5f * density, listRight);
+    }
+
+    /** From onResume (Home shown, the TV waking on it): data older than an hour, or from before this boot, is
+     *  refetched. From the minute tick: older than three hours. */
+    private void refreshSportIfStale(boolean onResume) {
+        if (sportFeed == null || sportRunning) return;
+        long now = System.currentTimeMillis();
+        SportFeed.Data shown = sportFeed.load();
+        long bootedAt = now - SystemClock.elapsedRealtime();
+        boolean stale = now - shown.fetchedAt > (onResume ? SportFeed.RESUME_STALE_MS : SportFeed.STALE_MS)
+                || shown.fetchedAt < bootedAt
+                || shown.version != SportFeed.CACHE_VERSION
+                // a new week (Monday) or month needs new rows and marks even when the data is fresh
+                || !sameWeek(shown.fetchedAt, now);
+        // Right after power-on the network is often not up yet: the first retries come a minute apart.
+        long retry = sportFailures < 5 ? MINUTE_MS - 5_000 : SPORT_RETRY_MS;
+        if (!stale || now - sportLastTry < retry) return;
+        sportLastTry = now;
+        sportRunning = true;
+        sportExecutor.execute(() -> {
+            SportFeed.Data fresh = null;
+            try {
+                fresh = sportFeed.refresh();
+            } catch (RuntimeException e) {
+                android.util.Log.w("TvHomeSport", "refresh crashed", e);
+            }
+            SportFeed.Data result = fresh;
+            handler.post(() -> {
+                sportRunning = false;
+                sportFailures = result == null ? sportFailures + 1 : 0;
+                if (result != null && sportView != null) sportView.setData(result);
+            });
+        });
+    }
+
+    private static boolean sameWeek(long a, long b) {
+        java.time.ZoneId z = java.time.ZoneId.systemDefault();
+        java.time.LocalDate da = java.time.Instant.ofEpochMilli(a).atZone(z).toLocalDate();
+        java.time.LocalDate db = java.time.Instant.ofEpochMilli(b).atZone(z).toLocalDate();
+        java.time.temporal.TemporalAdjuster mon = java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY);
+        return da.with(mon).equals(db.with(mon)) && da.getMonth() == db.getMonth();
+    }
+
+    private void schedulePage() {
+        handler.removeCallbacks(sportPage);
+        long ms = sportView != null ? sportView.pageMs() : 0;
+        handler.postDelayed(sportPage, ms > 0 ? ms : MINUTE_MS);
     }
 
     /** Centre the one-row header when the greeting and extra date lines are absent (#2265). */
