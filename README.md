@@ -1,3 +1,38 @@
+# This is a fork: CleanYourTV + a sport calendar on Home
+
+A personal fork of [Gathin23/cleanyourtv](https://github.com/Gathin23/cleanyourtv) by shulev.as, not affiliated with the original project. Everything below the line is the original README. For cleaning a TV in general, use upstream: it is far more active, and this branch sits on its commit `6e8615eb` (2026-11-01) with no plans to keep up.
+
+![Home screen with a month calendar under the clock and this week's races and matches beside it](docs/fork-sport-calendar.png)
+
+**What this fork adds**
+
+- **Sport calendar on Home.** A month grid under the clock (a ball marks tennis days, a flag marks F1) and this week's events beside it, in the TV's time zone. Off with `sport_calendar` in `launcher/app/src/main/res/values/config.xml`.
+- **Screensaver button.** A round landscape icon in the top bar starts the screensaver chosen in the TV's settings, and Back on Home does the same (`screensaver_button`, `back_opens_screensaver`).
+- **Small tuning.** Uninstall in the tile menu, round icon-only buttons, the app library.
+
+**How the calendar works**
+
+The launcher fetches the data itself, with free sources and no API keys: [Jolpica](https://api.jolpi.ca) for F1, ESPN for tennis, and the ATP order of play PDF from protennislive.com for match times. It refreshes at boot, on returning to Home if the data is over an hour old, and every 3 hours while Home is showing. Without a network it shows the last good data from its cache.
+
+What it shows is simply what I watch: F1 races only; tennis singles from the round of 16 on, at Slams, Masters 1000, ATP 500, ATP Finals and cups (women's matches at Slams, the Olympics and United Cup).
+
+**How it differs from upstream**
+
+- The launcher here has the `INTERNET` permission. Upstream's has no network access by design, and that is why this lives in a fork rather than a pull request.
+- The defaults in `config.xml` are mine: the dock (Lampa, YouTube, VK Video, Spotify), hidden apps and the TCL Live TV package. Change them for your TV.
+- Tested on one TV only: TCL Smart TV Pro (G05), Android 11. Upstream's APK size gate and tests were not re-checked against this branch.
+- ESPN has no feed for Davis Cup, United Cup and Laver Cup, so their days go by hand into `cups` in `sport_tournaments.json`. The ATP 500 ids in that file are not verified.
+
+**Want other events on your TV?**
+
+That is the point of sharing this. The hard parts are done: the view, the cache, the refresh and the launcher hooks. Football, NBA or your own schedule mostly means replacing the sources and rules, so a coding agent can do it far faster and cheaper than starting from zero. For example:
+
+> Read `launcher/app/src/main/java/com/gathin/tvhome/SportFeed.java`, `SportCalendarView.java` and `assets/sport_tournaments.json` in this repo. Keep the calendar view, cache and refresh as they are. Replace the data sources and rules so it shows [your events, from a free source without a key], then build and install it on my TV.
+
+The code: `SportFeed.java` (sources, rules, cache), `OrderOfPlay.java` (the PDF parser, tennis only), `SportCalendarView.java` (drawing), and hooks in `MainActivity.java`. Build and install as in [launcher/](launcher/). MIT licensed, like the original.
+
+---
+
 <p align="center">
   <a href="https://cleanyour.tv"><img src="https://raw.githubusercontent.com/Gathin23/cleanyourtv/main/docs/banner.png" alt="CleanYourTV. Your TV, minus the ads. Strip the bloatware from any Android TV or Google TV over Wi-Fi and replace the ad-filled home screen with a clean launcher that looks like an Apple TV. No root, no cable, nothing uninstalled, and a one-line restore." width="800"></a>
 </p>
