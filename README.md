@@ -6,7 +6,7 @@ A personal fork of [Gathin23/cleanyourtv](https://github.com/Gathin23/cleanyourt
 
 **What this fork adds**
 
-- **Sport calendar on Home.** A month grid under the clock (a ball marks tennis days, a flag marks F1) and this week's events beside it, in the TV's time zone. Off with `sport_calendar` in `launcher/app/src/main/res/values/config.xml`.
+- **Sport calendar on Home.** A month grid under the clock (a ball marks tennis days, a flag marks F1) and this week's events beside it, in the TV's time zone, with results once they are over: set scores for tennis, the podium for F1. Off with `sport_calendar` in `launcher/app/src/main/res/values/config.xml`. Changes: [CHANGELOG.md](CHANGELOG.md).
 - **Screensaver button.** A round landscape icon in the top bar starts the screensaver chosen in the TV's settings, and Back on Home does the same (`screensaver_button`, `back_opens_screensaver`).
 - **Small tuning.** Uninstall in the tile menu, round icon-only buttons, the app library.
 
