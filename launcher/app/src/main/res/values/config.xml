@@ -527,6 +527,9 @@
          older than 3 hours, kept in files/sport.json for when there is no network. The tournament list is
          assets/sport_tournaments.json; a copy in the app's external files directory overrides it. -->
     <bool name="sport_calendar">true</bool>
+    <!-- Sport calendar, a finished F1 race: false shows the winner only ("P1 VER" in the time column), true adds
+         P2 and P3 after the race name ("Mexico City GP · P2 HAM · P3 ANT"). -->
+    <bool name="sport_f1_podium">false</bool>
     <!-- The clock screensaver (Home idle clock and the system screensaver) over Home's wallpaper instead of black with
          a coloured glow. The clock still moves every minute. Can also be set with "clock_wallpaper" in a theme. -->
     <bool name="clock_wallpaper">false</bool>

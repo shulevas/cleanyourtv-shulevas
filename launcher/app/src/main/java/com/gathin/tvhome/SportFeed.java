@@ -52,7 +52,7 @@ final class SportFeed {
     private static final String TAG = "TvHomeSport";
     static final String CACHE = "sport.json";
     /** Bump when the rules or the marks change: an older cache is then refetched at once. */
-    static final int CACHE_VERSION = 2;
+    static final int CACHE_VERSION = 3;
     static final String OVERRIDE = "sport_tournaments.json";
     /** How old the cache may be before Home asks for a new one. */
     static final long STALE_MS = 3 * 60 * 60 * 1000L;
@@ -75,24 +75,35 @@ final class SportFeed {
         final String title;
         /** Dim part: "Paris Masters · R16", "Brazil · Interlagos". */
         final String sub;
+        /**
+         * The result once there is one, else "". Tennis: the sets from the winner's side, the loser's tie-break
+         * points in brackets, then "ret." or alone "w/o" ("7-6(5) 3-6 6-2", "6-3 6-7(6) 1-4 ret."); the title is
+         * then "Winner d. Loser". F1: the podium's driver codes, "VER HAM ANT".
+         */
+        final String res;
 
         Item(LocalDate day, char kind, int order, String time, String title, String sub) {
+            this(day, kind, order, time, title, sub, "");
+        }
+
+        Item(LocalDate day, char kind, int order, String time, String title, String sub, String res) {
             this.day = day;
             this.kind = kind;
             this.order = order;
             this.time = time;
             this.title = title;
             this.sub = sub;
+            this.res = res != null ? res : "";
         }
 
         JSONObject json() throws JSONException {
             return new JSONObject().put("day", day.toString()).put("kind", String.valueOf(kind)).put("order", order)
-                    .put("time", time).put("title", title).put("sub", sub);
+                    .put("time", time).put("title", title).put("sub", sub).put("res", res);
         }
 
         static Item from(JSONObject o) {
             return new Item(LocalDate.parse(o.optString("day")), o.optString("kind", "t").charAt(0), o.optInt("order"),
-                    o.optString("time"), o.optString("title"), o.optString("sub"));
+                    o.optString("time"), o.optString("title"), o.optString("sub"), o.optString("res"));
         }
     }
 
@@ -115,7 +126,29 @@ final class SportFeed {
         }
 
         static final Data EMPTY = new Data(0, Collections.emptyList(), Collections.emptyMap(), 0);
+
+        /**
+         * True while a race or match of the last two days is over but its result has not come in yet: Home then
+         * refetches sooner (RESULT_STALE_MS), so the winner and the score show up without anyone doing anything.
+         */
+        boolean awaitingResults(ZoneId zone, long now) {
+            LocalDate today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate();
+            for (Item i : items) {
+                if (!i.res.isEmpty() || i.day.isBefore(today.minusDays(1)) || i.day.isAfter(today)) continue;
+                if (i.kind == 't' && i.time.equals("played")) return true;
+                if (i.kind == 'f' && i.order < 24 * 60) {
+                    long start = i.day.atStartOfDay(zone).plusMinutes(i.order).toInstant().toEpochMilli();
+                    if (now > start + RACE_MS) return true;
+                }
+            }
+            return false;
+        }
     }
+
+    /** A race is taken as over this long after its start; then its result is looked for. */
+    static final long RACE_MS = 2 * 60 * 60 * 1000L;
+    /** How often Home looks again while a finished event has no result yet. */
+    static final long RESULT_STALE_MS = 20 * 60 * 1000L;
 
     private final Context ctx;
     private final ZoneId zone;
@@ -330,10 +363,50 @@ final class SportFeed {
                 String name = r.optString("raceName").replace("Grand Prix", "GP").trim();
                 int minutes = timed ? local.getHour() * 60 + local.getMinute() : 24 * 60;
                 String shown = timed ? String.format(Locale.ROOT, "%02d:%02d", local.getHour(), local.getMinute()) : "time TBA";
-                out.add(new Item(day, 'f', minutes, shown, name, country + (track.isEmpty() ? "" : " · " + track)));
+                // The podium once the race should be over; until Jolpica has it the row keeps its time or "played".
+                String res = "";
+                if (System.currentTimeMillis() > local.toInstant().toEpochMilli() + (timed ? RACE_MS : 24 * 60 * 60 * 1000L)) {
+                    try {
+                        res = podium(new JSONObject(get("https://api.jolpi.ca/ergast/f1/" + y + "/" + r.optString("round")
+                                + "/results/?format=json&limit=3")));
+                    } catch (IOException | JSONException | RuntimeException e) {
+                        Log.w(TAG, "F1 result for " + name + ": " + e);
+                    }
+                }
+                out.add(new Item(day, 'f', minutes, shown, name, country + (track.isEmpty() ? "" : " · " + track), res));
             }
         }
         return out;
+    }
+
+    /**
+     * The podium from a Jolpica results answer as driver codes, "VER HAM ANT", or "" when it has no results yet.
+     * The code is the source's own three-letter code; a driver without one gets the first three letters of the
+     * family name.
+     */
+    static String podium(JSONObject o) throws JSONException {
+        JSONArray races = o.getJSONObject("MRData").getJSONObject("RaceTable").optJSONArray("Races");
+        if (races == null || races.length() == 0) return "";
+        JSONArray results = races.getJSONObject(0).optJSONArray("Results");
+        if (results == null) return "";
+        String[] p = new String[3];
+        for (int i = 0; i < results.length(); i++) {
+            JSONObject r = results.getJSONObject(i);
+            int pos = r.optInt("position");
+            if (pos < 1 || pos > 3) continue;
+            JSONObject d = r.optJSONObject("Driver");
+            if (d == null) continue;
+            String code = d.optString("code");
+            if (code.isEmpty()) {
+                String fam = d.optString("familyName").replaceAll("[^\\p{L}]", "");
+                code = fam.substring(0, Math.min(3, fam.length()));
+            }
+            p[pos - 1] = code.toUpperCase(Locale.ROOT);
+        }
+        if (p[0] == null || p[0].isEmpty()) return "";
+        StringBuilder s = new StringBuilder(p[0]);
+        for (int i = 1; i < 3; i++) if (p[i] != null && !p[i].isEmpty()) s.append(' ').append(p[i]);
+        return s.toString();
     }
 
     // ---- tennis --------------------------------------------------------------------------------------------
@@ -380,6 +453,9 @@ final class SportFeed {
         JSONObject tournament;
         String timeLabel;
         int order;
+        /** Index (0 or 1) of the winner in a, b, or -1; and the score from the winner's side. */
+        int winner = -1;
+        String res = "";
     }
 
     private List<Item> tennis(JSONObject list, LocalDate today, LocalDate monday, LocalDate sunday)
@@ -390,6 +466,16 @@ final class SportFeed {
         // Today, then the day after the listed events end (a new event that week), then Sunday (an event that
         // starts at the weekend): three calls at most.
         Map<String, JSONObject> events = new LinkedHashMap<>();
+        // Yesterday too: a tournament that ended yesterday is gone from today's scoreboard, and its last matches
+        // may have ended after the previous refresh, without a score in the cache.
+        LocalDate yesterday = today.minusDays(1);
+        if (!yesterday.isBefore(monday)) {
+            try {
+                probe(list, yesterday, events, yesterday);
+            } catch (IOException | JSONException e) {
+                Log.w(TAG, "yesterday's scoreboard: " + e);
+            }
+        }
         LocalDate covered = probe(list, today, events, today);
         if (covered.isBefore(sunday)) covered = probe(list, covered.plusDays(1), events, covered);
         if (covered.isBefore(sunday)) probe(list, sunday, events, covered);
@@ -457,6 +543,9 @@ final class SportFeed {
                     m.women = women;
                     if (state.equals("STATUS_FINAL") || state.equals("STATUS_RETIRED") || state.equals("STATUS_WALKOVER")) {
                         m.timeLabel = "done";
+                        int[] w = new int[1];
+                        m.res = score(cs, state, w);
+                        m.winner = w[0];
                     }
                     matches.add(m);
                 }
@@ -529,7 +618,12 @@ final class SportFeed {
                 continue;
             }
             if ("done".equals(m.timeLabel)) {
-                out.add(new Item(m.day, 't', m.order, "played", m.aLast + " vs " + m.bLast, sub));
+                if (m.winner >= 0 && !m.res.isEmpty()) {
+                    String w = m.winner == 0 ? m.aLast : m.bLast, l = m.winner == 0 ? m.bLast : m.aLast;
+                    out.add(new Item(m.day, 't', m.order, "played", w + " d. " + l, sub, m.res));
+                } else {
+                    out.add(new Item(m.day, 't', m.order, "played", m.aLast + " vs " + m.bLast, sub));
+                }
             } else {
                 out.add(new Item(m.day, 't', m.order, m.timeLabel, m.aLast + " vs " + m.bLast, sub));
             }
@@ -561,6 +655,46 @@ final class SportFeed {
             if (end != null && end.isAfter(latest)) latest = end;
         }
         return latest;
+    }
+
+    /**
+     * A finished match's score from ESPN's competitors, from the winner's side: "7-6(5) 3-6 6-2", with " ret." when
+     * the loser retired, "w/o" for a walkover. winner[0] gets the winner's index in ESPN's order (as player()
+     * reads it: "order" 1, then 2), or -1 with "" when ESPN does not say who won.
+     */
+    static String score(JSONArray cs, String state, int[] winner) {
+        winner[0] = -1;
+        if (cs == null || cs.length() < 2) return "";
+        JSONObject[] side = new JSONObject[2];
+        for (int i = 0; i < 2; i++) {
+            side[i] = cs.optJSONObject(i);
+            for (int k = 0; k < cs.length(); k++) {
+                JSONObject x = cs.optJSONObject(k);
+                if (x != null && x.optInt("order") == i + 1) side[i] = x;
+            }
+            if (side[i] == null) return "";
+        }
+        int w = side[0].optBoolean("winner") ? 0 : side[1].optBoolean("winner") ? 1 : -1;
+        if (w < 0) return "";
+        winner[0] = w;
+        if (state.equals("STATUS_WALKOVER")) return "w/o";
+        JSONArray ws = side[w].optJSONArray("linescores"), ls = side[1 - w].optJSONArray("linescores");
+        int n = Math.min(ws != null ? ws.length() : 0, ls != null ? ls.length() : 0);
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            JSONObject a = ws.optJSONObject(i), b = ls.optJSONObject(i);
+            if (a == null || b == null) continue;
+            int ga = a.optInt("value"), gb = b.optInt("value");
+            if (s.length() > 0) s.append(' ');
+            s.append(ga).append('-').append(gb);
+            // A tie-break set: the loser of the set's points in brackets, 7-6(5).
+            if (Math.abs(ga - gb) == 1 && Math.max(ga, gb) == 7 && a.has("tiebreak") && b.has("tiebreak")) {
+                s.append('(').append(Math.min(a.optInt("tiebreak"), b.optInt("tiebreak"))).append(')');
+            }
+        }
+        if (s.length() == 0) return state.equals("STATUS_RETIRED") ? "ret." : "";
+        if (state.equals("STATUS_RETIRED")) s.append(" ret.");
+        return s.toString();
     }
 
     private static String roundName(String espn, int size, boolean allRounds) {
@@ -601,7 +735,7 @@ final class SportFeed {
     }
 
     private static final Set<String> DOUBLE = new HashSet<>(java.util.Arrays.asList(
-            "Davidovich Fokina", "Carreno Busta", "Bautista Agut", "Mpetshi Perricard", "Barrios Vera", "Haddad Maia"));
+            "Davidovich Fokina", "Carreno Busta", "Bautista Agut", "Mpetshi Perricard", "Barrios Vera", "Haddad Maia", "Van Assche"));
 
     private static ZoneId tz(JSONObject t) {
         try {

@@ -8,7 +8,6 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.os.SystemClock;
-import android.text.TextUtils;
 import android.view.View;
 
 import java.time.DayOfWeek;
@@ -42,6 +41,8 @@ final class SportCalendarView extends View {
     private final Paint title = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint sub = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pillNum = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** A finished race's winner code, "VER": the time's size in the title's weight. */
+    private final Paint code = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint icon = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF rect = new RectF();
     private final Path path = new Path();
@@ -53,6 +54,8 @@ final class SportCalendarView extends View {
     /** Seconds per page when the week does not fit. */
     private static final long PAGE_MS = 15_000;
     private int pages = 1;
+    /** sport_f1_podium: a finished race also lists P2 and P3 after its name. */
+    private boolean podium;
 
     SportCalendarView(Context ctx, Typeface regular, Typeface medium) {
         super(ctx);
@@ -70,6 +73,7 @@ final class SportCalendarView extends View {
         style(title, medium, 12f, 0xFFFFFFFF, 0f);
         style(sub, regular, 12f, 0x80FFFFFF, 0f);
         style(pillNum, regular, 10.5f, 0xB3FFFFFF, 0f);
+        style(code, medium, 12.5f, 0xFFFFFFFF, 0.04f);
         digit.setTextAlign(Paint.Align.CENTER);
         digitToday.setTextAlign(Paint.Align.CENTER);
         weekday.setTextAlign(Paint.Align.CENTER);
@@ -82,6 +86,11 @@ final class SportCalendarView extends View {
         p.setTextSize(sizeDp * dp);
         p.setColor(color);
         p.setLetterSpacing(spacing);
+    }
+
+    void setPodium(boolean on) {
+        podium = on;
+        invalidate();
     }
 
     void setData(SportFeed.Data d) {
@@ -211,18 +220,47 @@ final class SportCalendarView extends View {
         final SportFeed.Item item;
         final String time, title, sub;
         final boolean dim;
+        /** The result drawn in the time column instead of the time: a tennis score or an F1 winner, else "". */
+        final String res;
+        /** Between the bold title and the dim rest: " · ", or " " for "Alcaraz d. Ruud". */
+        final String joiner;
 
         Row(SportFeed.Item item, String time, String title, String sub, boolean dim) {
+            this(item, time, title, sub, dim, "", " · ");
+        }
+
+        Row(SportFeed.Item item, String time, String title, String sub, boolean dim, String res, String joiner) {
             this.item = item;
             this.time = time;
             this.title = title;
             this.sub = sub;
             this.dim = dim;
+            this.res = res;
+            this.joiner = joiner;
         }
     }
 
-    /** The week's rows by day: past days fold their tennis into one line; a tournament with more than four
-     *  matches in a day shows three and "+N more". */
+    /** A row for an item: its result when it has one, its time otherwise ("played" once the day is over). */
+    private Row row(SportFeed.Item i, boolean past) {
+        if (!i.res.isEmpty()) {
+            if (i.kind == 'f') {
+                String[] p = i.res.split(" ");
+                String sub = i.sub;
+                if (podium && p.length >= 3) sub = "P2 " + p[1] + " · P3 " + p[2];
+                return new Row(i, "", i.title, sub, past, p[0], " · ");
+            }
+            int d = i.title.indexOf(" d. ");
+            if (d > 0) {
+                // The winner bold, "d. Loser" with the dim part; the round short (QF) so the score row has room.
+                return new Row(i, "", i.title.substring(0, d), i.title.substring(d + 1) + " · " + shortRound(i.sub),
+                        past, i.res, " ");
+            }
+        }
+        return new Row(i, past ? "played" : i.time, i.title, i.sub, past);
+    }
+
+    /** The week's rows by day; a tournament with more than four matches in a day shows three and "+N more".
+     *  Finished matches and races show their result (SportFeed.Item.res), or "played" until it comes in. */
     private Map<LocalDate, List<Row>> groups(LocalDate today) {
         LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate sunday = monday.plusDays(6);
@@ -239,7 +277,7 @@ final class SportCalendarView extends View {
             Map<String, List<SportFeed.Item>> byTournament = new LinkedHashMap<>();
             for (SportFeed.Item i : e.getValue()) {
                 if (i.kind == 'f') {
-                    rows.add(new Row(i, past ? "played" : i.time, i.title, i.sub, past));
+                    rows.add(row(i, past));
                     continue;
                 }
                 String t = i.sub.split(" · ")[0];
@@ -247,18 +285,10 @@ final class SportCalendarView extends View {
             }
             for (Map.Entry<String, List<SportFeed.Item>> t : byTournament.entrySet()) {
                 List<SportFeed.Item> list = t.getValue();
-                if (past) {
-                    int n = list.size();
-                    rows.add(new Row(list.get(0), "played", t.getKey(), n + (n == 1 ? " match" : " matches"), true));
-                    continue;
-                }
                 int shown = list.size() > 4 ? 3 : list.size();
-                for (int k = 0; k < shown; k++) {
-                    SportFeed.Item i = list.get(k);
-                    rows.add(new Row(i, i.time, i.title, i.sub, false));
-                }
+                for (int k = 0; k < shown; k++) rows.add(row(list.get(k), past));
                 if (list.size() > shown) {
-                    rows.add(new Row(list.get(shown), "", "", "+ " + (list.size() - shown) + " more · " + t.getKey(), false));
+                    rows.add(new Row(list.get(shown), "", "", "+ " + (list.size() - shown) + " more · " + t.getKey(), past));
                 }
             }
             rows.sort((a, b) -> Integer.compare(order(a), order(b)));
@@ -317,7 +347,15 @@ final class SportCalendarView extends View {
         float pillW = PILL_W * dp;
         float iconX = listLeft + pillW + 8 * dp;
         float timeX = iconX + ICON_W * dp;
-        float textX = timeX + TIME_W * dp;
+        // A long score (four or five sets) widens the time column for the whole page, so the names stay in one
+        // straight column instead of jumping from row to row.
+        float statusW = TIME_W * dp;
+        for (LocalDate d : pageList.get(page)) {
+            for (Row row : groups.get(d)) {
+                if (!row.res.isEmpty()) statusW = Math.max(statusW, resultWidth(row) + STATUS_GAP * dp);
+            }
+        }
+        float textX = timeX + statusW;
         for (LocalDate d : pageList.get(page)) {
             List<Row> rows = groups.get(d);
             float h = rows.size() * rowH;
@@ -345,22 +383,23 @@ final class SportCalendarView extends View {
                     if (row.item.kind == 'f') drawFlag(c, iconX, mid - s / 2, s);
                     else drawBall(c, iconX, mid - s / 2, s);
                 }
-                drawTime(c, row.time, timeX, mid, alpha);
+                if (row.res.isEmpty()) drawTime(c, row.time, timeX, mid, alpha);
+                else drawResult(c, row, timeX, mid, row.dim ? RESULT_DIM_ALPHA : 255);
                 float maxW = listRight - textX;
                 String t = row.title.isEmpty() ? "" : row.title;
-                String s = (t.isEmpty() ? "" : " · ") + row.sub;
+                String s = (t.isEmpty() ? "" : row.joiner) + row.sub;
                 title.setAlpha(alpha);
                 sub.setAlpha(row.dim ? 110 : 255 * 0x80 / 0xFF);
                 float tw = title.measureText(t);
                 if (tw > maxW) {
-                    t = TextUtils.ellipsize(t, new android.text.TextPaint(title), maxW, TextUtils.TruncateAt.END).toString();
+                    t = fit(t, title, maxW);
                     tw = title.measureText(t);
                 }
                 float base = mid - (title.ascent() + title.descent()) / 2;
                 c.drawText(t, textX, base, title);
                 float sw = maxW - tw;
                 if (sw > 8 * dp) {
-                    String ss = TextUtils.ellipsize(s, new android.text.TextPaint(sub), sw, TextUtils.TruncateAt.END).toString();
+                    String ss = fit(s, sub, sw);
                     c.drawText(ss, textX + tw, base, sub);
                 }
                 title.setAlpha(255);
@@ -375,6 +414,97 @@ final class SportCalendarView extends View {
             c.drawText(marker, listRight, bottom - timeSmall.descent(), timeSmall);
             timeSmall.setTextAlign(Paint.Align.LEFT);
         }
+    }
+
+    private static final String[][] ROUNDS = {{"Quarterfinals", "QF"}, {"Semifinals", "SF"}, {"Round of 16", "R16"},
+            {"Final", "F"}};
+
+    private static String shortRound(String s) {
+        for (String[] r : ROUNDS) {
+            if (s.endsWith(" · " + r[0]) || s.equals(r[0])) return s.substring(0, s.length() - r[0].length()) + r[1];
+        }
+        return s;
+    }
+
+    /** The text cut to width: first the round written short ("· Final" -> "· F"), then an ellipsis at the end. */
+    private static String fit(String s, Paint p, float w) {
+        if (p.measureText(s) <= w) return s;
+        s = shortRound(s);
+        if (p.measureText(s) <= w) return s;
+        int n = p.breakText(s, true, Math.max(0, w - p.measureText("…")), null);
+        return n <= 0 ? "" : s.substring(0, n).replaceAll("\\s+$", "") + "…";
+    }
+
+    // ---- results -------------------------------------------------------------------------------------------
+
+    /** dp between the result and the names when a long score widens the time column. */
+    private static final float STATUS_GAP = 10;
+    /** Above this width (dp) a score drops its tie-break points: 7-6 instead of 7-6(5). */
+    private static final float SCORE_MAX_W = 118;
+    /** A past day's result stays brighter than its dimmed names: it is what the row is for. */
+    private static final int RESULT_DIM_ALPHA = 200;
+
+    private float resultWidth(Row row) {
+        return drawResult(null, row, 0, 0, 255);
+    }
+
+    /**
+     * Draws a result at x (or only measures it when c is null) and returns its width. F1: "P1" small and dim, like
+     * "NB", then the winner's code. Tennis: the sets in the time's font, tie-break points smaller and dim right
+     * after their set, "ret." and "w/o" dim; tie-breaks are left out when the whole score would not fit.
+     */
+    private float drawResult(Canvas c, Row row, float x, float mid, int alpha) {
+        float base = mid - (time.ascent() + time.descent()) / 2;
+        if (row.item.kind == 'f') {
+            float w = timeSmall.measureText("P1") + 3 * dp;
+            if (c != null) {
+                timeSmall.setAlpha(alpha * 0x8C / 0xFF);
+                c.drawText("P1", x, base, timeSmall);
+                timeSmall.setColor(0x8CFFFFFF);
+                code.setAlpha(alpha);
+                c.drawText(row.res, x + w, base, code);
+                code.setAlpha(255);
+            }
+            return w + code.measureText(row.res);
+        }
+        boolean tb = scoreWidth(row.res, true) <= SCORE_MAX_W * dp;
+        if (c == null) return scoreWidth(row.res, tb);
+        time.setAlpha(alpha);
+        soft.setAlpha(alpha * 0x8C / 0xFF);
+        float w = drawScore(c, row.res, tb, x, base);
+        time.setAlpha(255);
+        soft.setColor(0x8CFFFFFF);
+        return w;
+    }
+
+    private float scoreWidth(String res, boolean tb) {
+        return drawScore(null, res, tb, 0, 0);
+    }
+
+    private float drawScore(Canvas c, String res, boolean tb, float x0, float base) {
+        float x = x0, gap = 5 * dp;
+        String[] sets = res.split(" ");
+        for (int i = 0; i < sets.length; i++) {
+            String set = sets[i];
+            if (i > 0) x += gap;
+            if (set.equals("ret.") || set.equals("w/o")) {
+                if (c != null) c.drawText(set, x, base, soft);
+                x += soft.measureText(set);
+                continue;
+            }
+            int b = set.indexOf('(');
+            String games = b > 0 ? set.substring(0, b) : set;
+            if (c != null) c.drawText(games, x, base, time);
+            x += time.measureText(games);
+            if (b > 0 && tb) {
+                // The tie-break points without brackets, small and raised a little: 7-6⁵.
+                String pts = set.substring(b + 1, set.length() - 1);
+                x += 0.5f * dp;
+                if (c != null) c.drawText(pts, x, base - 4 * dp, soft);
+                x += soft.measureText(pts);
+            }
+        }
+        return x - x0;
     }
 
     private void drawTime(Canvas c, String t, float x, float mid, int alpha) {

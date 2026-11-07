@@ -36,6 +36,14 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all {
+            systemProperty 'sport.preview', System.getProperty('sport.preview', '')
+            systemProperty 'robolectric.graphicsMode', 'NATIVE'
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -47,4 +55,7 @@ dependencies {
     implementation 'androidx.dynamicanimation:dynamicanimation:1.0.0'
     // Test only (never in the APK): plain JVM tests for the module card validators, src/test.
     testImplementation 'junit:junit:4.13.2'
+    // Sport calendar: real org.json for SportResultsTest, and Robolectric's native canvas for SportPreviewTest,
+    // which draws the calendar to PNG files on the PC (gradlew testReleaseUnitTest -Dsport.preview=<dir>).
+    testImplementation 'org.robolectric:robolectric:4.13'
 }

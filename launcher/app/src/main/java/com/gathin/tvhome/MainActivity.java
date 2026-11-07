@@ -2572,6 +2572,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         android.graphics.Typeface regular = getResources().getFont(R.font.outfit_regular);
         android.graphics.Typeface medium = getResources().getFont(R.font.outfit_medium);
         sportView = new SportCalendarView(this, regular, medium);
+        sportView.setPodium(getResources().getBoolean(R.bool.sport_f1_podium));
         // Behind the grid, like the race panel: cards scrolling up pass over it while it fades.
         ViewGroup rootGroup = (ViewGroup) root;
         rootGroup.addView(sportView, rootGroup.indexOfChild(findViewById(R.id.racePanel)) + 1,
@@ -2623,6 +2624,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         boolean stale = now - shown.fetchedAt > (onResume ? SportFeed.RESUME_STALE_MS : SportFeed.STALE_MS)
                 || shown.fetchedAt < bootedAt
                 || shown.version != SportFeed.CACHE_VERSION
+                // a race or match is over and its result has not come in yet: look again sooner
+                || (shown.awaitingResults(java.time.ZoneId.systemDefault(), now) && now - shown.fetchedAt > SportFeed.RESULT_STALE_MS)
                 // a new week (Monday) or month needs new rows and marks even when the data is fresh
                 || !sameWeek(shown.fetchedAt, now);
         // Right after power-on the network is often not up yet: the first retries come a minute apart.
