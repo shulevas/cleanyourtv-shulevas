@@ -48,6 +48,7 @@ public class SportPreviewTest {
 
     private static final int L = 590, T = 140, R = 1390, B = 532;   // the list's area on the screenshot
     private File dir;
+    private boolean allSets;
     private Context ctx;
     private Typeface regular, medium;
 
@@ -100,6 +101,9 @@ public class SportPreviewTest {
         SportFeed.Data d = new SportFeed.Data(System.currentTimeMillis(), items, new HashMap<>());
         draw(d, false, "slam-winner.png");
         draw(d, true, "slam-podium.png");
+        allSets = true;
+        draw(d, true, "slam-all-sets.png");
+        allSets = false;
     }
 
     private static LocalDate monday() {
@@ -119,6 +123,7 @@ public class SportPreviewTest {
         }
         SportCalendarView v = new SportCalendarView(ctx, regular, medium);
         v.setPodium(podium);
+        v.allSets = allSets;
         v.setData(d);
         v.measure(1920, 1080);
         v.layout(0, 0, 1920, 1080);
