@@ -52,7 +52,7 @@ final class SportFeed {
     private static final String TAG = "TvHomeSport";
     static final String CACHE = "sport.json";
     /** Bump when the rules or the marks change: an older cache is then refetched at once. */
-    static final int CACHE_VERSION = 3;
+    static final int CACHE_VERSION = 4;
     static final String OVERRIDE = "sport_tournaments.json";
     /** How old the cache may be before Home asks for a new one. */
     static final long STALE_MS = 3 * 60 * 60 * 1000L;
@@ -145,6 +145,9 @@ final class SportFeed {
         }
     }
 
+    /** Days after today in the list (and fetched): tomorrow and the day after. */
+    static final int DAYS_AHEAD = 2;
+
     /** A race is taken as over this long after its start; then its result is looked for. */
     static final long RACE_MS = 2 * 60 * 60 * 1000L;
     /** How often Home looks again while a finished event has no result yet. */
@@ -219,6 +222,9 @@ final class SportFeed {
         LocalDate today = LocalDate.now(zone);
         LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate sunday = monday.plusDays(6);
+        // The list's days: yesterday (what was missed), today, and two days ahead. The month's marks still cover
+        // the whole month.
+        LocalDate from = today.minusDays(1), to = today.plusDays(DAYS_AHEAD);
         LocalDate monthStart = today.withDayOfMonth(1);
         LocalDate monthEnd = today.with(TemporalAdjusters.lastDayOfMonth());
         Data old = load();
@@ -231,7 +237,7 @@ final class SportFeed {
         // F1
         List<Item> f1 = null;
         try {
-            f1 = f1(today.getYear(), monthStart, monthEnd, monday, sunday, marks);
+            f1 = f1(today.getYear(), monthStart, monthEnd, from, to, marks);
             any = true;
         } catch (IOException | JSONException | RuntimeException e) {
             Log.w(TAG, "F1 failed: " + e);
@@ -247,25 +253,25 @@ final class SportFeed {
         JSONObject tournamentsJson = tournaments();
         List<Item> tennis = null;
         try {
-            tennis = tennis(tournamentsJson, today, monday, sunday);
+            tennis = tennis(tournamentsJson, today, from, to);
             any = true;
         } catch (IOException | JSONException | RuntimeException e) {
             Log.w(TAG, "tennis failed: " + e);
         }
         if (tennis == null) {
             tennis = new ArrayList<>();
-            for (Item i : old.items) if (i.kind == 't' && !i.day.isBefore(monday) && !i.day.isAfter(sunday)) tennis.add(i);
+            for (Item i : old.items) if (i.kind == 't' && !i.day.isBefore(from) && !i.day.isAfter(to)) tennis.add(i);
         } else {
             // A tournament that ended earlier this week is no longer on today's scoreboard: keep its days from
             // the cache.
             Set<LocalDate> covered = new HashSet<>();
             for (Item i : tennis) covered.add(i.day);
             for (Item i : old.items) {
-                if (i.kind == 't' && !i.day.isBefore(monday) && i.day.isBefore(today) && !covered.contains(i.day)) tennis.add(i);
+                if (i.kind == 't' && !i.day.isBefore(from) && i.day.isBefore(today) && !covered.contains(i.day)) tennis.add(i);
             }
         }
         items.addAll(tennis);
-        items.addAll(cups(tournamentsJson, monday, sunday));
+        items.addAll(cups(tournamentsJson, from, to));
         for (Item i : items) if (i.kind == 't') addMark(marks, i.day, 't');
 
         // Month marks for the other weeks: tournament spans from ESPN's season list (weekly), narrowed to the days
@@ -277,7 +283,7 @@ final class SportFeed {
             Log.w(TAG, "season failed: " + e);
             season = oldRaw != null ? oldRaw.optJSONObject("season") : null;
         }
-        if (season != null) seasonMarks(season, monthStart, monthEnd, monday, sunday, marks);
+        if (season != null) seasonMarks(season, monthStart, monthEnd, from, to, marks);
         cupMarks(tournamentsJson, monthStart, monthEnd, marks);
 
         if (!any) return null;
@@ -328,13 +334,14 @@ final class SportFeed {
         for (int i = 0; i < c.length; i += 2) CIRCUITS.put(c[i], c[i + 1]);
     }
 
-    private List<Item> f1(int year, LocalDate monthStart, LocalDate monthEnd, LocalDate monday, LocalDate sunday,
+    private List<Item> f1(int year, LocalDate monthStart, LocalDate monthEnd, LocalDate listFrom, LocalDate listTo,
                           Map<LocalDate, String> marks) throws IOException, JSONException {
         List<Item> out = new ArrayList<>();
         Set<Integer> years = new HashSet<>();
         years.add(year);
         years.add(monthEnd.getYear());
-        years.add(sunday.getYear());
+        years.add(listTo.getYear());
+        years.add(listFrom.getYear());
         for (int y : years) {
             JSONObject o = new JSONObject(get("https://api.jolpi.ca/ergast/f1/" + y + "/races/?format=json&limit=100"));
             JSONArray races = o.getJSONObject("MRData").getJSONObject("RaceTable").getJSONArray("Races");
@@ -351,7 +358,7 @@ final class SportFeed {
                 }
                 LocalDate day = local.toLocalDate();
                 if (!day.isBefore(monthStart) && !day.isAfter(monthEnd)) addMark(marks, day, 'f');
-                if (day.isBefore(monday) || day.isAfter(sunday)) continue;
+                if (day.isBefore(listFrom) || day.isAfter(listTo)) continue;
                 JSONObject circuit = r.optJSONObject("Circuit");
                 String country = "", track = "";
                 if (circuit != null) {
@@ -458,7 +465,7 @@ final class SportFeed {
         String res = "";
     }
 
-    private List<Item> tennis(JSONObject list, LocalDate today, LocalDate monday, LocalDate sunday)
+    private List<Item> tennis(JSONObject list, LocalDate today, LocalDate listFrom, LocalDate listTo)
             throws IOException, JSONException {
         // One scoreboard per day the week still has, from today; the past days of the week come from the cache's
         // earlier runs. ESPN returns the events that are on that day, each with its whole draw, so one call usually
@@ -469,16 +476,14 @@ final class SportFeed {
         // Yesterday too: a tournament that ended yesterday is gone from today's scoreboard, and its last matches
         // may have ended after the previous refresh, without a score in the cache.
         LocalDate yesterday = today.minusDays(1);
-        if (!yesterday.isBefore(monday)) {
-            try {
-                probe(list, yesterday, events, yesterday);
-            } catch (IOException | JSONException e) {
-                Log.w(TAG, "yesterday's scoreboard: " + e);
-            }
+        try {
+            probe(list, yesterday, events, yesterday);
+        } catch (IOException | JSONException e) {
+            Log.w(TAG, "yesterday's scoreboard: " + e);
         }
         LocalDate covered = probe(list, today, events, today);
-        if (covered.isBefore(sunday)) covered = probe(list, covered.plusDays(1), events, covered);
-        if (covered.isBefore(sunday)) probe(list, sunday, events, covered);
+        if (covered.isBefore(listTo)) covered = probe(list, covered.plusDays(1), events, covered);
+        if (covered.isBefore(listTo)) probe(list, listTo, events, covered);
 
         List<Match> matches = new ArrayList<>();
         Map<String, List<Match>> courtDay = new HashMap<>();   // tournament|court|day -> matches, for "after match"
@@ -531,7 +536,7 @@ final class SportFeed {
                     m.timeValid = comp.optBoolean("timeValid");
                     m.day = m.timeValid ? when.withZoneSameInstant(zone).toLocalDate()
                             : when.withZoneSameInstant(ZoneId.of("America/New_York")).toLocalDate();
-                    if (m.day.isBefore(monday) || m.day.isAfter(sunday)) continue;
+                    if (m.day.isBefore(listFrom) || m.day.isAfter(listTo)) continue;
                     m.court = comp.optJSONObject("venue") != null ? comp.getJSONObject("venue").optString("court") : "";
                     JSONArray cs = comp.optJSONArray("competitors");
                     m.a = player(cs, 0);
@@ -837,7 +842,7 @@ final class SportFeed {
      * span (a Slam's last 8 days, a two-week Masters' last 5, a one-week event's last 4, the ATP Finals all week).
      * This week's marks come from the real matches.
      */
-    private static void seasonMarks(JSONObject season, LocalDate from, LocalDate to, LocalDate monday, LocalDate sunday,
+    private static void seasonMarks(JSONObject season, LocalDate from, LocalDate to, LocalDate listFrom, LocalDate listTo,
                                     Map<LocalDate, String> marks) {
         JSONArray a = season.optJSONArray("events");
         if (a == null) return;
@@ -855,7 +860,7 @@ final class SportFeed {
                     : tier.equals("slam") ? 8 : span >= 10 ? 5 : 4;
             for (LocalDate d = end.minusDays(last - 1); !d.isAfter(end); d = d.plusDays(1)) {
                 if (d.isBefore(from) || d.isAfter(to)) continue;
-                if (!d.isBefore(monday) && !d.isAfter(sunday)) continue;   // this week: real matches only
+                if (!d.isBefore(listFrom) && !d.isAfter(listTo)) continue;   // the list's days: real matches only
                 addMark(marks, d, 't');
             }
         }

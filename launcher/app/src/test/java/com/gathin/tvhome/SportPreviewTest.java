@@ -24,9 +24,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -48,7 +46,6 @@ public class SportPreviewTest {
 
     private static final int L = 590, T = 140, R = 1390, B = 532;   // the list's area on the screenshot
     private File dir;
-    private boolean allSets;
     private Context ctx;
     private Typeface regular, medium;
 
@@ -72,42 +69,32 @@ public class SportPreviewTest {
         String mexico = SportFeed.podium(new JSONObject(get(
                 "https://api.jolpi.ca/ergast/f1/2026/19/results/?format=json&limit=3")));
         List<SportFeed.Item> items = new ArrayList<>(live.items);
-        items.add(0, new SportFeed.Item(monday(), 'f', 22 * 60, "22:00", "Mexico City GP",
+        items.add(0, new SportFeed.Item(LocalDate.now().minusDays(1), 'f', 22 * 60, "22:00", "Mexico City GP",
                 "Mexico · Mexico City", mexico));
         SportFeed.Data d = new SportFeed.Data(live.fetchedAt, items, live.marks);
         draw(d, false, "real-winner.png");
         draw(d, true, "real-podium.png");
     }
 
-    /** A Slam-like week: five sets with tie-breaks, four sets, a retirement, a walkover, and a race. */
+    /** A Slam-like day: five sets, four sets, a retirement, a walkover, a race, tomorrow's final. */
     @Test
     public void slamWeek() throws Exception {
-        LocalDate mon = monday();
+        LocalDate today = LocalDate.now();
         List<SportFeed.Item> items = new ArrayList<>();
         String ao = "Australian Open · ";
-        items.add(new SportFeed.Item(mon, 't', 9 * 60, "played", "Sinner d. Alcaraz", ao + "Final",
+        items.add(new SportFeed.Item(today.minusDays(1), 't', 9 * 60, "played", "Sinner d. Alcaraz", ao + "Semifinals",
                 "6-7(5) 7-6(8) 6-4 3-6 7-6(10)"));
-        items.add(new SportFeed.Item(mon, 't', 10 * 60, "played", "Djokovic d. Zverev", ao + "Semifinals",
+        items.add(new SportFeed.Item(today.minusDays(1), 't', 12 * 60, "played", "Djokovic d. Zverev", ao + "Semifinals",
                 "7-5 4-6 6-3 7-6(4)"));
-        items.add(new SportFeed.Item(mon, 't', 11 * 60, "played", "Khachanov d. Shapovalov", ao + "Quarterfinals",
+        items.add(new SportFeed.Item(today, 't', 9 * 60, "played", "Khachanov d. Shapovalov", ao + "Quarterfinals",
                 "6-3 6-7(6) 1-4 ret."));
-        items.add(new SportFeed.Item(mon.plusDays(1), 't', 9 * 60, "played", "Alcaraz d. Berrettini", ao + "Round of 16",
-                "w/o"));
-        items.add(new SportFeed.Item(mon.plusDays(1), 't', 11 * 60, "played", "Fritz d. Paul", ao + "Round of 16",
-                "6-4 6-0"));
-        items.add(new SportFeed.Item(mon.plusDays(2), 'f', 17 * 60, "17:00", "Brazilian GP", "Brazil · Interlagos",
-                "NOR VER LEC"));
-        items.add(new SportFeed.Item(mon.plusDays(6), 't', 10 * 60 + 30, "10:30", "Sinner vs Medvedev", ao + "Final"));
+        items.add(new SportFeed.Item(today, 't', 10 * 60, "played", "Alcaraz d. Berrettini", ao + "Quarterfinals", "w/o"));
+        items.add(new SportFeed.Item(today, 'f', 17 * 60, "17:00", "Brazilian GP", "Brazil · Interlagos", "NOR VER LEC"));
+        items.add(new SportFeed.Item(today.plusDays(1), 't', 10 * 60 + 30, "10:30", "Sinner vs Djokovic", ao + "Final"));
+        items.add(new SportFeed.Item(today.plusDays(2), 't', 10 * 60 + 30, "time TBA", "Final", "Australian Open · Women"));
         SportFeed.Data d = new SportFeed.Data(System.currentTimeMillis(), items, new HashMap<>());
         draw(d, false, "slam-winner.png");
         draw(d, true, "slam-podium.png");
-        allSets = true;
-        draw(d, true, "slam-all-sets.png");
-        allSets = false;
-    }
-
-    private static LocalDate monday() {
-        return LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
     }
 
     private void draw(SportFeed.Data d, boolean podium, String name) throws Exception {
@@ -123,7 +110,6 @@ public class SportPreviewTest {
         }
         SportCalendarView v = new SportCalendarView(ctx, regular, medium);
         v.setPodium(podium);
-        v.allSets = allSets;
         v.setData(d);
         v.measure(1920, 1080);
         v.layout(0, 0, 1920, 1080);

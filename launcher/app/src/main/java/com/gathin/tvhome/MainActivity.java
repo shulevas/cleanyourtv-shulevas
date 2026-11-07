@@ -2626,8 +2626,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 || shown.version != SportFeed.CACHE_VERSION
                 // a race or match is over and its result has not come in yet: look again sooner
                 || (shown.awaitingResults(java.time.ZoneId.systemDefault(), now) && now - shown.fetchedAt > SportFeed.RESULT_STALE_MS)
-                // a new week (Monday) or month needs new rows and marks even when the data is fresh
-                || !sameWeek(shown.fetchedAt, now);
+                // a new day moves the list (yesterday to two days ahead); a new month needs new marks
+                || !sameDay(shown.fetchedAt, now);
         // Right after power-on the network is often not up yet: the first retries come a minute apart.
         long retry = sportFailures < 5 ? MINUTE_MS - 5_000 : SPORT_RETRY_MS;
         if (!stale || now - sportLastTry < retry) return;
@@ -2649,12 +2649,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         });
     }
 
-    private static boolean sameWeek(long a, long b) {
+    private static boolean sameDay(long a, long b) {
         java.time.ZoneId z = java.time.ZoneId.systemDefault();
-        java.time.LocalDate da = java.time.Instant.ofEpochMilli(a).atZone(z).toLocalDate();
-        java.time.LocalDate db = java.time.Instant.ofEpochMilli(b).atZone(z).toLocalDate();
-        java.time.temporal.TemporalAdjuster mon = java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY);
-        return da.with(mon).equals(db.with(mon)) && da.getMonth() == db.getMonth();
+        return java.time.Instant.ofEpochMilli(a).atZone(z).toLocalDate()
+                .equals(java.time.Instant.ofEpochMilli(b).atZone(z).toLocalDate());
     }
 
     private void schedulePage() {

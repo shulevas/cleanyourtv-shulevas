@@ -250,7 +250,7 @@ final class SportCalendarView extends View {
                     if (t.equals("ret.")) ret = true;
                     else if (!t.equals("w/o") && !t.isEmpty()) sets++;
                 }
-                String note = (!allSets && sets > SETS_SHOWN ? sets + " sets · " : "") + (ret ? "ret. · " : "");
+                String note = (sets > SETS_SHOWN ? sets + " sets · " : "") + (ret ? "ret. · " : "");
                 Row r = new Row(i, "", i.title.substring(0, d), note + shortRound(i.sub), past, i.res, " · ");
                 r.loser = " vs " + i.title.substring(d + 4);
                 return r;
@@ -262,11 +262,10 @@ final class SportCalendarView extends View {
     /** The week's rows by day; a tournament with more than four matches in a day shows three and "+N more".
      *  Finished matches and races show their result (SportFeed.Item.res), or "played" until it comes in. */
     private Map<LocalDate, List<Row>> groups(LocalDate today) {
-        LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        LocalDate sunday = monday.plusDays(6);
+        LocalDate from = today.minusDays(1), to = today.plusDays(SportFeed.DAYS_AHEAD);
         Map<LocalDate, List<SportFeed.Item>> byDay = new LinkedHashMap<>();
         for (SportFeed.Item i : data.items) {
-            if (i.day.isBefore(monday) || i.day.isAfter(sunday)) continue;
+            if (i.day.isBefore(from) || i.day.isAfter(to)) continue;
             byDay.computeIfAbsent(i.day, k -> new ArrayList<>()).add(i);
         }
         Map<LocalDate, List<Row>> out = new LinkedHashMap<>();
@@ -305,19 +304,19 @@ final class SportCalendarView extends View {
         Map<LocalDate, List<Row>> groups = groups(today);
         if (groups.isEmpty()) {
             soft.setAlpha(140);
-            c.drawText("No races or matches this week", listLeft, listTop - soft.ascent(), soft);
+            c.drawText("Nothing on today or in the next two days", listLeft, listTop - soft.ascent(), soft);
             soft.setColor(0x8CFFFFFF);
             return;
         }
         float rowH = ROW_H * dp, gap = GROUP_GAP * dp;
-        // One page, never turning: when the week does not fit, the oldest past days go first, whole; if it still
-        // does not fit, the furthest days ahead. Today always stays.
+        // Yesterday, today and up to two days ahead, on one page that never turns. When they do not fit, whole
+        // days go: the furthest ahead first, then yesterday. Today always stays.
         List<LocalDate> shown = new ArrayList<>(groups.keySet());
         float room = bottom - listTop;
         while (shown.size() > 1 && height(groups, shown, rowH, gap) > room) {
-            LocalDate first = shown.get(0), last = shown.get(shown.size() - 1);
-            if (first.isBefore(today)) shown.remove(0);
-            else if (!last.equals(today)) shown.remove(shown.size() - 1);
+            LocalDate last = shown.get(shown.size() - 1);
+            if (last.isAfter(today)) shown.remove(shown.size() - 1);
+            else if (shown.get(0).isBefore(today)) shown.remove(0);
             else break;
         }
         float y = listTop;
@@ -465,10 +464,8 @@ final class SportCalendarView extends View {
         return w;
     }
 
-    /** Sets in the score column: the last three, unless allSets (then the column widens for that page). */
+    /** Sets in the score column: the last three; the row's text says "5 sets". */
     private static final int SETS_SHOWN = 3;
-    /** Test switch for the previews: every set of a long match instead of the last three and "5 sets". */
-    boolean allSets;
 
     /**
      * Tennis: the sets from the winner's side in fixed cells, so the colons of every row stand in one column
@@ -488,7 +485,7 @@ final class SportCalendarView extends View {
             return soft.measureText("w/o");
         }
         int total = sets.size();
-        if (!allSets && total > SETS_SHOWN) sets = sets.subList(total - SETS_SHOWN, total);
+        if (total > SETS_SHOWN) sets = sets.subList(total - SETS_SHOWN, total);
         float digit = 0;
         for (char ch = '0'; ch <= '9'; ch++) digit = Math.max(digit, time.measureText(String.valueOf(ch)));
         float colon = time.measureText(":");
