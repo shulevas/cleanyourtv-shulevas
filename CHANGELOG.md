@@ -2,7 +2,8 @@
 
 ## 2026-11-08
 
-- **Remote buttons.** YouTube on the remote opens SmartTube, Netflix opens Lampa.
+- **Remote button bindings.** Two buttons rebound: YouTube now opens SmartTube, Netflix opens Lampa.
+- **Known issue.** On my TV the USB port sees no drives at the moment. The cause is not clear yet.
 
 ## 2026-11-07
 
