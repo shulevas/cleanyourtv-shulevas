@@ -76,24 +76,36 @@ public class SportPreviewTest {
         draw(d, true, "real-podium.png");
     }
 
-    /** A Slam-like day: five sets, four sets, a retirement, a walkover, a race, tomorrow's final. */
+    /**
+     * A Slam week at its busiest: yesterday eight men's R16 results, today eight women's R16 and a race,
+     * tomorrow the quarterfinals, and the week's other days too. Only the best-ranked matches fit.
+     */
     @Test
     public void slamWeek() throws Exception {
         LocalDate today = LocalDate.now();
         List<SportFeed.Item> items = new ArrayList<>();
         String ao = "Australian Open · ";
-        items.add(new SportFeed.Item(today.minusDays(1), 't', 9 * 60, "played", "Sinner d. Alcaraz", ao + "Semifinals",
-                "6-7(5) 7-6(8) 6-4 3-6 7-6(10)"));
-        items.add(new SportFeed.Item(today.minusDays(1), 't', 12 * 60, "played", "Djokovic d. Zverev", ao + "Semifinals",
-                "7-5 4-6 6-3 7-6(4)"));
-        items.add(new SportFeed.Item(today, 't', 9 * 60, "played", "Khachanov d. Shapovalov", ao + "Quarterfinals",
-                "6-3 6-7(6) 1-4 ret."));
-        items.add(new SportFeed.Item(today, 't', 10 * 60, "played", "Alcaraz d. Berrettini", ao + "Quarterfinals", "w/o"));
-        items.add(new SportFeed.Item(today, 'f', 17 * 60, "17:00", "Brazilian GP", "Brazil · Interlagos", "NOR VER LEC"));
-        items.add(new SportFeed.Item(today.plusDays(1), 't', 10 * 60 + 30, "10:30", "Sinner vs Djokovic", ao + "Final"));
-        items.add(new SportFeed.Item(today.plusDays(2), 't', 10 * 60 + 30, "time TBA", "Final", "Australian Open · Women"));
+        String[][] men = {{"Sinner d. Alcaraz", "6-7(5) 7-6(8) 6-4 3-6 7-6(10)", "2"}, {"Zverev d. Paul", "6-4 6-4 6-2", "1"},
+                {"Shelton d. Fritz", "7-5 4-6 6-3 7-6(4)", "4"}, {"Khachanov d. Shapovalov", "6-3 6-7(6) 1-4 ret.", "11"},
+                {"Halys d. Bonzi", "6-4 6-3 6-4", "46"}, {"Ruud d. Borges", "6-1 6-2 6-2", "23"},
+                {"Medvedev d. Rune", "6-4 7-6(3) 6-4", "5"}, {"Kym d. Fery", "6-4 6-3 6-4", "999"}};
+        for (int k = 0; k < men.length; k++) {
+            items.add(new SportFeed.Item(today.minusDays(1), 't', 9 * 60 + k * 60, "played", men[k][0], ao + "Round of 16",
+                    men[k][1], Integer.parseInt(men[k][2])));
+        }
+        String[][] women = {{"Sabalenka vs Kostyuk", "1"}, {"Swiatek vs Badosa", "2"}, {"Gauff vs Navarro", "3"},
+                {"Rybakina vs Fernandez", "6"}, {"Andreeva vs Kasatkina", "7"}, {"Paolini vs Mertens", "9"},
+                {"Zheng vs Bouzkova", "8"}, {"Keys vs Sakkari", "12"}};
+        for (int k = 0; k < women.length; k++) {
+            items.add(new SportFeed.Item(today, 't', 9 * 60 + k * 50, k == 0 ? "09:00" : "after match", women[k][0],
+                    ao + "Women · Round of 16", "", Integer.parseInt(women[k][1])));
+        }
+        items.add(new SportFeed.Item(today, 'f', 17 * 60, "17:00", "Brazilian GP", "Brazil · Interlagos", "NOR VER LEC", 0));
+        items.add(new SportFeed.Item(today.plusDays(1), 't', 9 * 60, "09:00", "Sinner vs Zverev", ao + "Quarterfinals", "", 1));
+        items.add(new SportFeed.Item(today.plusDays(1), 't', 11 * 60, "after match", "Shelton vs Medvedev", ao + "Quarterfinals", "", 4));
+        items.add(new SportFeed.Item(today.plusDays(1), 't', 24 * 60 + 2, "time TBA", "Quarterfinals", "Australian Open · 2 matches"));
+        items.add(new SportFeed.Item(today.minusDays(2), 't', 9 * 60, "played", "Alcaraz d. Musetti", ao + "Round of 32", "6-2 6-2 6-2", 3));
         SportFeed.Data d = new SportFeed.Data(System.currentTimeMillis(), items, new HashMap<>());
-        draw(d, false, "slam-winner.png");
         draw(d, true, "slam-podium.png");
     }
 

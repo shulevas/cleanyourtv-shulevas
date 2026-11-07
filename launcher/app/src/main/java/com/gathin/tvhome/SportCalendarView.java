@@ -216,6 +216,8 @@ final class SportCalendarView extends View {
         final String joiner;
         /** A finished match's " vs Loser", drawn after the winner in the title's weight, dimmer. */
         String loser = "";
+        /** Matches of the same tournament and day left out for room: " · +N more" at the end of this row. */
+        int more;
 
         Row(SportFeed.Item item, String time, String title, String sub, boolean dim) {
             this(item, time, title, sub, dim, "", " · ");
@@ -259,65 +261,108 @@ final class SportCalendarView extends View {
         return new Row(i, past ? "played" : i.time, i.title, i.sub, past);
     }
 
-    /** The week's rows by day; a tournament with more than four matches in a day shows three and "+N more".
-     *  Finished matches and races show their result (SportFeed.Item.res), or "played" until it comes in. */
+    /** The list's rows by day, in time order: every race and match, with its result once it has one. */
     private Map<LocalDate, List<Row>> groups(LocalDate today) {
-        LocalDate from = today.minusDays(1), to = today.plusDays(SportFeed.DAYS_AHEAD);
-        Map<LocalDate, List<SportFeed.Item>> byDay = new LinkedHashMap<>();
+        LocalDate from = SportFeed.listFrom(today), to = SportFeed.listTo(today);
+        Map<LocalDate, List<Row>> out = new java.util.TreeMap<>();
         for (SportFeed.Item i : data.items) {
             if (i.day.isBefore(from) || i.day.isAfter(to)) continue;
-            byDay.computeIfAbsent(i.day, k -> new ArrayList<>()).add(i);
+            out.computeIfAbsent(i.day, k -> new ArrayList<>()).add(row(i, i.day.isBefore(today)));
         }
-        Map<LocalDate, List<Row>> out = new LinkedHashMap<>();
-        for (Map.Entry<LocalDate, List<SportFeed.Item>> e : byDay.entrySet()) {
-            LocalDate d = e.getKey();
-            boolean past = d.isBefore(today);
-            List<Row> rows = new ArrayList<>();
-            Map<String, List<SportFeed.Item>> byTournament = new LinkedHashMap<>();
-            for (SportFeed.Item i : e.getValue()) {
-                if (i.kind == 'f') {
-                    rows.add(row(i, past));
-                    continue;
-                }
-                String t = i.sub.split(" · ")[0];
-                byTournament.computeIfAbsent(t, k -> new ArrayList<>()).add(i);
-            }
-            for (Map.Entry<String, List<SportFeed.Item>> t : byTournament.entrySet()) {
-                List<SportFeed.Item> list = t.getValue();
-                int shown = list.size() > 4 ? 3 : list.size();
-                for (int k = 0; k < shown; k++) rows.add(row(list.get(k), past));
-                if (list.size() > shown) {
-                    rows.add(new Row(list.get(shown), "", "", "+ " + (list.size() - shown) + " more · " + t.getKey(), past));
-                }
-            }
-            rows.sort((a, b) -> Integer.compare(order(a), order(b)));
-            out.put(d, rows);
-        }
+        for (List<Row> rows : out.values()) rows.sort((a, b) -> Integer.compare(a.item.order, b.item.order));
         return out;
     }
 
-    private static int order(Row r) {
-        return r.title.isEmpty() ? Integer.MAX_VALUE : r.item.order;
+    /**
+     * How many rows each day gets on the one page. Yesterday, today and tomorrow always have a place (two rows
+     * each at least, one when even that is too much); then today fills up, then tomorrow, then yesterday; the
+     * week's other days come after, nearest first, with what room is left.
+     */
+    private static Map<LocalDate, Integer> allot(Map<LocalDate, List<Row>> groups, LocalDate today, float room,
+                                                 float rowH, float gap) {
+        List<LocalDate> must = new ArrayList<>();
+        for (LocalDate d : new LocalDate[]{today, today.plusDays(1), today.minusDays(1)}) {
+            if (groups.containsKey(d)) must.add(d);
+        }
+        Map<LocalDate, Integer> n = new java.util.HashMap<>();
+        int base = 2;
+        while (true) {
+            float h = 0;
+            for (LocalDate d : must) h += Math.min(base, groups.get(d).size()) * rowH + gap;
+            if (h - gap <= room || base == 1) break;
+            base--;
+        }
+        float used = 0;
+        for (LocalDate d : must) {
+            int k = Math.min(base, groups.get(d).size());
+            n.put(d, k);
+            used += k * rowH + gap;
+        }
+        used -= gap;
+        for (LocalDate d : must) {
+            int more = Math.min(groups.get(d).size() - n.get(d), (int) Math.floor((room - used) / rowH + 1e-3));
+            if (more <= 0) continue;
+            n.put(d, n.get(d) + more);
+            used += more * rowH;
+        }
+        List<LocalDate> rest = new ArrayList<>(groups.keySet());
+        rest.removeAll(must);
+        rest.sort((a, b) -> {
+            long da = Math.abs(a.toEpochDay() - today.toEpochDay()), db = Math.abs(b.toEpochDay() - today.toEpochDay());
+            return da != db ? Long.compare(da, db) : b.compareTo(a);   // the day ahead before the day behind
+        });
+        for (LocalDate d : rest) {
+            int k = Math.min(groups.get(d).size(), (int) Math.floor((room - used - gap) / rowH + 1e-3));
+            if (k <= 0) continue;
+            n.put(d, k);
+            used += gap + k * rowH;
+        }
+        return n;
+    }
+
+    /** A day's k rows that matter most (races, then the best-ranked players), back in time order; each
+     *  tournament's last row shown counts the matches left out. */
+    private static List<Row> keep(List<Row> rows, int k) {
+        if (k >= rows.size()) {
+            for (Row r : rows) r.more = 0;
+            return rows;
+        }
+        List<Row> byRank = new ArrayList<>(rows);
+        byRank.sort((a, b) -> a.item.rank != b.item.rank ? Integer.compare(a.item.rank, b.item.rank)
+                : Integer.compare(a.item.order, b.item.order));
+        List<Row> kept = new ArrayList<>(byRank.subList(0, k));
+        kept.sort((a, b) -> Integer.compare(a.item.order, b.item.order));
+        Map<String, Integer> hidden = new java.util.HashMap<>();
+        for (Row r : byRank.subList(k, byRank.size())) hidden.merge(tournament(r), 1, Integer::sum);
+        for (Row r : kept) r.more = 0;
+        for (int i = kept.size() - 1; i >= 0; i--) {
+            Row r = kept.get(i);
+            Integer h = hidden.remove(tournament(r));
+            if (h != null) r.more = h;
+        }
+        return kept;
+    }
+
+    private static String tournament(Row r) {
+        return r.item.kind == 'f' ? "F1" : r.item.sub.split(" · ")[0];
     }
 
     private void drawList(Canvas c, LocalDate today, float bottom) {
         Map<LocalDate, List<Row>> groups = groups(today);
         if (groups.isEmpty()) {
             soft.setAlpha(140);
-            c.drawText("Nothing on today or in the next two days", listLeft, listTop - soft.ascent(), soft);
+            c.drawText("No races or matches this week", listLeft, listTop - soft.ascent(), soft);
             soft.setColor(0x8CFFFFFF);
             return;
         }
         float rowH = ROW_H * dp, gap = GROUP_GAP * dp;
-        // Yesterday, today and up to two days ahead, on one page that never turns. When they do not fit, whole
-        // days go: the furthest ahead first, then yesterday. Today always stays.
-        List<LocalDate> shown = new ArrayList<>(groups.keySet());
-        float room = bottom - listTop;
-        while (shown.size() > 1 && height(groups, shown, rowH, gap) > room) {
-            LocalDate last = shown.get(shown.size() - 1);
-            if (last.isAfter(today)) shown.remove(shown.size() - 1);
-            else if (shown.get(0).isBefore(today)) shown.remove(0);
-            else break;
+        // One page that never turns: see allot() for which days and rows get the room.
+        Map<LocalDate, Integer> counts = allot(groups, today, bottom - listTop, rowH, gap);
+        List<LocalDate> shown = new ArrayList<>();
+        for (LocalDate d : groups.keySet()) {
+            if (!counts.containsKey(d)) continue;
+            shown.add(d);
+            groups.put(d, keep(groups.get(d), counts.get(d)));
         }
         float y = listTop;
         float pillW = PILL_W * dp;
@@ -381,8 +426,11 @@ final class SportCalendarView extends View {
                     title.setAlpha(alpha);
                 }
                 float sw = maxW - tw;
-                if (sw > 8 * dp) {
-                    String ss = fit(s, sub, sw);
+                String tail = row.more > 0 ? " · +" + row.more + " more" : "";
+                float tailW = sub.measureText(tail);
+                if (sw > 8 * dp + tailW) {
+                    // The count of matches left out stays whole; the rest gives way.
+                    String ss = fit(s, sub, sw - tailW) + tail;
                     c.drawText(ss, textX + tw, base, sub);
                 }
                 title.setAlpha(255);
@@ -393,11 +441,6 @@ final class SportCalendarView extends View {
         }
     }
 
-    private static float height(Map<LocalDate, List<Row>> groups, List<LocalDate> days, float rowH, float gap) {
-        float h = 0;
-        for (LocalDate d : days) h += groups.get(d).size() * rowH + gap;
-        return h - gap;
-    }
 
     private static final String[][] ROUNDS = {{"Quarterfinals", "QF"}, {"Semifinals", "SF"}, {"Round of 16", "R16"},
             {"Final", "F"}};

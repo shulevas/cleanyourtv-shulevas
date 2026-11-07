@@ -52,7 +52,7 @@ final class SportFeed {
     private static final String TAG = "TvHomeSport";
     static final String CACHE = "sport.json";
     /** Bump when the rules or the marks change: an older cache is then refetched at once. */
-    static final int CACHE_VERSION = 4;
+    static final int CACHE_VERSION = 5;
     static final String OVERRIDE = "sport_tournaments.json";
     /** How old the cache may be before Home asks for a new one. */
     static final long STALE_MS = 3 * 60 * 60 * 1000L;
@@ -81,12 +81,22 @@ final class SportFeed {
          * then "Winner d. Loser". F1: the podium's driver codes, "VER HAM ANT".
          */
         final String res;
+        /**
+         * How much the row matters when the list is short of room: the better ATP/WTA ranking of the two players
+         * (1 = world No. 1), NO_RANK when neither is in the top 150 or the players are not known, 0 for a race.
+         */
+        final int rank;
 
         Item(LocalDate day, char kind, int order, String time, String title, String sub) {
             this(day, kind, order, time, title, sub, "");
         }
 
         Item(LocalDate day, char kind, int order, String time, String title, String sub, String res) {
+            this(day, kind, order, time, title, sub, res, kind == 'f' ? 0 : NO_RANK);
+        }
+
+        Item(LocalDate day, char kind, int order, String time, String title, String sub, String res, int rank) {
+            this.rank = rank;
             this.day = day;
             this.kind = kind;
             this.order = order;
@@ -98,12 +108,13 @@ final class SportFeed {
 
         JSONObject json() throws JSONException {
             return new JSONObject().put("day", day.toString()).put("kind", String.valueOf(kind)).put("order", order)
-                    .put("time", time).put("title", title).put("sub", sub).put("res", res);
+                    .put("time", time).put("title", title).put("sub", sub).put("res", res).put("rank", rank);
         }
 
         static Item from(JSONObject o) {
             return new Item(LocalDate.parse(o.optString("day")), o.optString("kind", "t").charAt(0), o.optInt("order"),
-                    o.optString("time"), o.optString("title"), o.optString("sub"), o.optString("res"));
+                    o.optString("time"), o.optString("title"), o.optString("sub"), o.optString("res"),
+                    o.optInt("rank", o.optString("kind", "t").equals("f") ? 0 : NO_RANK));
         }
     }
 
@@ -145,8 +156,20 @@ final class SportFeed {
         }
     }
 
-    /** Days after today in the list (and fetched): tomorrow and the day after. */
-    static final int DAYS_AHEAD = 2;
+    /** The list's days: this week, plus yesterday on a Monday and tomorrow on a Sunday. */
+    static LocalDate listFrom(LocalDate today) {
+        LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        return today.minusDays(1).isBefore(monday) ? today.minusDays(1) : monday;
+    }
+
+    static LocalDate listTo(LocalDate today) {
+        LocalDate sunday = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
+        return today.plusDays(1).isAfter(sunday) ? today.plusDays(1) : sunday;
+    }
+
+    static final int NO_RANK = 999;
+    /** The rankings (ESPN, ATP and WTA top 150) are refetched once a week. */
+    private static final long RANKINGS_MS = 7 * 24 * 60 * 60 * 1000L;
 
     /** A race is taken as over this long after its start; then its result is looked for. */
     static final long RACE_MS = 2 * 60 * 60 * 1000L;
@@ -222,9 +245,7 @@ final class SportFeed {
         LocalDate today = LocalDate.now(zone);
         LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         LocalDate sunday = monday.plusDays(6);
-        // The list's days: yesterday (what was missed), today, and two days ahead. The month's marks still cover
-        // the whole month.
-        LocalDate from = today.minusDays(1), to = today.plusDays(DAYS_AHEAD);
+        LocalDate from = listFrom(today), to = listTo(today);
         LocalDate monthStart = today.withDayOfMonth(1);
         LocalDate monthEnd = today.with(TemporalAdjusters.lastDayOfMonth());
         Data old = load();
@@ -251,9 +272,16 @@ final class SportFeed {
 
         // Tennis
         JSONObject tournamentsJson = tournaments();
+        JSONObject rankings = null;
+        try {
+            rankings = rankings(oldRaw);
+        } catch (IOException | JSONException | RuntimeException e) {
+            Log.w(TAG, "rankings failed: " + e);
+            rankings = oldRaw != null ? oldRaw.optJSONObject("rankings") : null;
+        }
         List<Item> tennis = null;
         try {
-            tennis = tennis(tournamentsJson, today, from, to);
+            tennis = tennis(tournamentsJson, today, from, to, rankings != null ? rankings.optJSONObject("ids") : null);
             any = true;
         } catch (IOException | JSONException | RuntimeException e) {
             Log.w(TAG, "tennis failed: " + e);
@@ -293,6 +321,7 @@ final class SportFeed {
         try {
             JSONObject extra = new JSONObject();
             if (season != null) extra.put("season", season);
+            if (rankings != null) extra.put("rankings", rankings);
             save(d, extra);
         } catch (IOException | JSONException e) {
             Log.w(TAG, "cache not written: " + e);
@@ -463,9 +492,10 @@ final class SportFeed {
         /** Index (0 or 1) of the winner in a, b, or -1; and the score from the winner's side. */
         int winner = -1;
         String res = "";
+        int rank = NO_RANK;
     }
 
-    private List<Item> tennis(JSONObject list, LocalDate today, LocalDate listFrom, LocalDate listTo)
+    private List<Item> tennis(JSONObject list, LocalDate today, LocalDate listFrom, LocalDate listTo, JSONObject ranks)
             throws IOException, JSONException {
         // One scoreboard per day the week still has, from today; the past days of the week come from the cache's
         // earlier runs. ESPN returns the events that are on that day, each with its whole draw, so one call usually
@@ -542,6 +572,7 @@ final class SportFeed {
                     m.a = player(cs, 0);
                     m.b = player(cs, 1);
                     m.aLast = surname(m.a);
+                    m.rank = Math.min(rank(ranks, cs, 0), rank(ranks, cs, 1));
                     m.bLast = surname(m.b);
                     m.roundSize = size;
                     m.roundName = roundName(rname, size, allRounds);
@@ -625,12 +656,12 @@ final class SportFeed {
             if ("done".equals(m.timeLabel)) {
                 if (m.winner >= 0 && !m.res.isEmpty()) {
                     String w = m.winner == 0 ? m.aLast : m.bLast, l = m.winner == 0 ? m.bLast : m.aLast;
-                    out.add(new Item(m.day, 't', m.order, "played", w + " d. " + l, sub, m.res));
+                    out.add(new Item(m.day, 't', m.order, "played", w + " d. " + l, sub, m.res, m.rank));
                 } else {
-                    out.add(new Item(m.day, 't', m.order, "played", m.aLast + " vs " + m.bLast, sub));
+                    out.add(new Item(m.day, 't', m.order, "played", m.aLast + " vs " + m.bLast, sub, "", m.rank));
                 }
             } else {
-                out.add(new Item(m.day, 't', m.order, m.timeLabel, m.aLast + " vs " + m.bLast, sub));
+                out.add(new Item(m.day, 't', m.order, m.timeLabel, m.aLast + " vs " + m.bLast, sub, "", m.rank));
             }
         }
         for (Map.Entry<String, Integer> e : pending.entrySet()) {
@@ -708,6 +739,38 @@ final class SportFeed {
         if (size == 4) return "Quarterfinals";
         if (size == 8 && !allRounds) return "Round of 16";
         return espn;
+    }
+
+    /** A player's ranking from {"athlete id": rank}, by ESPN's order as player() reads it; NO_RANK if unranked. */
+    private static int rank(JSONObject ranks, JSONArray cs, int i) {
+        if (ranks == null || cs == null || cs.length() <= i) return NO_RANK;
+        JSONObject c = cs.optJSONObject(i);
+        for (int k = 0; k < cs.length(); k++) {
+            JSONObject x = cs.optJSONObject(k);
+            if (x != null && x.optInt("order") == i + 1) c = x;
+        }
+        String id = c != null ? c.optString("id") : "";
+        return id.isEmpty() ? NO_RANK : ranks.optInt(id, NO_RANK);
+    }
+
+    /** {"at": ms, "ids": {"athlete id": rank}} for the ATP and WTA top 150, cached a week. */
+    private JSONObject rankings(JSONObject oldRaw) throws IOException, JSONException {
+        JSONObject cached = oldRaw != null ? oldRaw.optJSONObject("rankings") : null;
+        if (cached != null && System.currentTimeMillis() - cached.optLong("at") < RANKINGS_MS) return cached;
+        JSONObject ids = new JSONObject();
+        for (String league : new String[]{"atp", "wta"}) {
+            JSONObject o = new JSONObject(get("https://site.api.espn.com/apis/site/v2/sports/tennis/" + league + "/rankings"));
+            JSONArray lists = o.optJSONArray("rankings");
+            JSONArray ranks = lists != null && lists.length() > 0 ? lists.getJSONObject(0).optJSONArray("ranks") : null;
+            if (ranks == null) continue;
+            for (int i = 0; i < ranks.length(); i++) {
+                JSONObject r = ranks.getJSONObject(i);
+                JSONObject a = r.optJSONObject("athlete");
+                if (a != null && !a.optString("id").isEmpty()) ids.put(a.optString("id"), r.optInt("current", NO_RANK));
+            }
+        }
+        if (ids.length() == 0) throw new IOException("no rankings");
+        return new JSONObject().put("at", System.currentTimeMillis()).put("ids", ids);
     }
 
     private static String player(JSONArray cs, int i) {
