@@ -2,13 +2,19 @@
 
 A personal fork of [Gathin23/cleanyourtv](https://github.com/Gathin23/cleanyourtv) by shulev.as, not affiliated with the original project. Everything below the line is the original README. For cleaning a TV in general, use upstream: it is far more active, and this branch sits on its commit `6e8615eb` (2026-11-01) with no plans to keep up.
 
-![Home screen with a month calendar under the clock and this week's races and matches beside it](docs/fork-sport-calendar.png)
+| Upstream launcher | This fork |
+|---|---|
+| ![Upstream Home: clock and date, Inputs, Wi-Fi and Settings pills, a row of app tiles](docs/new-home.jpg) | ![This fork's Home: a month calendar under the clock, this week's races and matches with results beside it, round buttons with a screensaver one](docs/fork-sport-calendar.png) |
+
+In short: a sport calendar with results on Home, a screensaver button, round icon-only buttons. Everything else is upstream.
 
 **What this fork adds**
 
 - **Sport calendar on Home.** A month grid under the clock (a ball marks tennis days, a flag marks F1) and this week's events beside it, in the TV's time zone, with results once they are over: set scores for tennis, the podium for F1. Off with `sport_calendar` in `launcher/app/src/main/res/values/config.xml`. Changes: [CHANGELOG.md](CHANGELOG.md).
 - **Screensaver button.** A round landscape icon in the top bar starts the screensaver chosen in the TV's settings, and Back on Home does the same (`screensaver_button`, `back_opens_screensaver`).
 - **Small tuning.** Uninstall in the tile menu, round icon-only buttons, the app library.
+
+**Open question.** On my TV the USB port stopped seeing drives around the time of the debloat. So far it looks like hardware: the kernel sees no device at all, even with TCL's media center switched back on and after a full power cycle. Not settled yet.
 
 **How the calendar works**
 
