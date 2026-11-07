@@ -222,8 +222,10 @@ final class SportCalendarView extends View {
         final boolean dim;
         /** The result drawn in the time column instead of the time: a tennis score or an F1 winner, else "". */
         final String res;
-        /** Between the bold title and the dim rest: " · ", or " " for "Alcaraz d. Ruud". */
+        /** Between the bold title and the dim rest: " · ". */
         final String joiner;
+        /** A finished match's " vs Loser", drawn after the winner in the title's weight, dimmer. */
+        String loser = "";
 
         Row(SportFeed.Item item, String time, String title, String sub, boolean dim) {
             this(item, time, title, sub, dim, "", " · ");
@@ -244,16 +246,16 @@ final class SportCalendarView extends View {
     private Row row(SportFeed.Item i, boolean past) {
         if (!i.res.isEmpty()) {
             if (i.kind == 'f') {
-                String[] p = i.res.split(" ");
-                String sub = i.sub;
-                if (podium && p.length >= 3) sub = "P2 " + p[1] + " · P3 " + p[2];
-                return new Row(i, "", i.title, sub, past, p[0], " · ");
+                // The codes in the time column, first to third left to right; the race keeps its place and track.
+                String res = podium ? i.res : i.res.split(" ")[0];
+                return new Row(i, "", i.title, i.sub, past, res, " · ");
             }
             int d = i.title.indexOf(" d. ");
             if (d > 0) {
-                // The winner bold, "d. Loser" with the dim part; the round short (QF) so the score row has room.
-                return new Row(i, "", i.title.substring(0, d), i.title.substring(d + 1) + " · " + shortRound(i.sub),
-                        past, i.res, " ");
+                // "Winner vs Loser": both names, the winner first and brighter; the round short (QF) for room.
+                Row r = new Row(i, "", i.title.substring(0, d), shortRound(i.sub), past, i.res, " · ");
+                r.loser = " vs " + i.title.substring(d + 4);
+                return r;
             }
         }
         return new Row(i, past ? "played" : i.time, i.title, i.sub, past);
@@ -390,13 +392,20 @@ final class SportCalendarView extends View {
                 String s = (t.isEmpty() ? "" : row.joiner) + row.sub;
                 title.setAlpha(alpha);
                 sub.setAlpha(row.dim ? 110 : 255 * 0x80 / 0xFF);
+                if (!row.loser.isEmpty()) t += row.loser;
                 float tw = title.measureText(t);
                 if (tw > maxW) {
                     t = fit(t, title, maxW);
                     tw = title.measureText(t);
                 }
                 float base = mid - (title.ascent() + title.descent()) / 2;
-                c.drawText(t, textX, base, title);
+                int split = row.loser.isEmpty() ? t.length() : Math.min(t.length(), row.title.length());
+                c.drawText(t, 0, split, textX, base, title);
+                if (split < t.length()) {
+                    title.setAlpha(alpha * LOSER_ALPHA / 255);
+                    c.drawText(t, split, t.length(), textX + title.measureText(t, 0, split), base, title);
+                    title.setAlpha(alpha);
+                }
                 float sw = maxW - tw;
                 if (sw > 8 * dp) {
                     String ss = fit(s, sub, sw);
@@ -446,56 +455,80 @@ final class SportCalendarView extends View {
         return drawResult(null, row, 0, 0, 255);
     }
 
+    /** The loser's name in a finished match, against the winner's full white. */
+    private static final int LOSER_ALPHA = 165;
+
     /**
-     * Draws a result at x (or only measures it when c is null) and returns its width. F1: "P1" small and dim, like
-     * "NB", then the winner's code. Tennis: each set as games with a slash, sets apart by a dim dash, as TV
-     * graphics write it ("6/4 - 7/6 - 6/2"); no tie-break points; "ret." and "w/o" dim.
+     * Draws a result at x (or only measures it when c is null) and returns its width. F1: the drivers' codes, the
+     * winner in the title's weight, second and third dimmer. Tennis: games with a colon, sets apart by a dim dash
+     * ("6:4 - 7:6 - 6:2"), no tie-break points; more than three sets show the last three and a small "of 5" low
+     * on the right; "ret." and "w/o" dim.
      */
     private float drawResult(Canvas c, Row row, float x, float mid, int alpha) {
         float base = mid - (time.ascent() + time.descent()) / 2;
         if (row.item.kind == 'f') {
-            float w = timeSmall.measureText("P1") + 3 * dp;
-            if (c != null) {
-                timeSmall.setAlpha(alpha * 0x8C / 0xFF);
-                c.drawText("P1", x, base, timeSmall);
-                timeSmall.setColor(0x8CFFFFFF);
-                code.setAlpha(alpha);
-                c.drawText(row.res, x + w, base, code);
-                code.setAlpha(255);
+            String[] p = row.res.split(" ");
+            float x0 = x;
+            for (int i = 0; i < p.length; i++) {
+                if (i > 0) x += 6 * dp;
+                Paint paint = i == 0 ? code : time;
+                if (c != null) {
+                    paint.setAlpha(i == 0 ? alpha : alpha * 150 / 255);
+                    c.drawText(p[i], x, base, paint);
+                    paint.setAlpha(255);
+                }
+                x += paint.measureText(p[i]);
             }
-            return w + code.measureText(row.res);
+            return x - x0;
         }
         if (c != null) {
             time.setAlpha(alpha);
             soft.setAlpha(alpha * 0x8C / 0xFF);
+            timeSmall.setAlpha(alpha * 0x8C / 0xFF);
         }
         float w = drawScore(c, row.res, x, base);
         time.setAlpha(255);
         soft.setColor(0x8CFFFFFF);
+        timeSmall.setColor(0x8CFFFFFF);
         return w;
     }
 
+    private static final int SETS_SHOWN = 3;
+
     private float drawScore(Canvas c, String res, float x0, float base) {
         float x = x0, gap = 4 * dp;
-        String[] sets = res.split(" ");
-        for (int i = 0; i < sets.length; i++) {
-            String set = sets[i];
-            if (set.equals("ret.") || set.equals("w/o")) {
-                if (i > 0) x += gap + 1 * dp;
-                if (c != null) c.drawText(set, x, base, soft);
-                x += soft.measureText(set);
-                continue;
-            }
+        List<String> sets = new ArrayList<>();
+        String tail = "";
+        for (String t : res.split(" ")) {
+            if (t.equals("ret.") || t.equals("w/o")) tail = t;
+            else if (!t.isEmpty()) sets.add(t);
+        }
+        int total = sets.size();
+        if (total > SETS_SHOWN) sets = sets.subList(total - SETS_SHOWN, total);
+        for (int i = 0; i < sets.size(); i++) {
             if (i > 0) {
                 x += gap;
                 if (c != null) c.drawText("-", x, base, soft);
                 x += soft.measureText("-") + gap;
             }
             // The cache keeps the tie-break points ("7-6(5)"); they are not shown.
+            String set = sets.get(i);
             int b = set.indexOf('(');
-            String games = (b > 0 ? set.substring(0, b) : set).replace('-', '/');
+            String games = (b > 0 ? set.substring(0, b) : set).replace('-', ':');
             if (c != null) c.drawText(games, x, base, time);
             x += time.measureText(games);
+        }
+        if (total > SETS_SHOWN) {
+            // The last three of five: a small note low on the right.
+            String note = "of " + total;
+            x += 3 * dp;
+            if (c != null) c.drawText(note, x, base + 2 * dp, timeSmall);
+            x += timeSmall.measureText(note);
+        }
+        if (!tail.isEmpty()) {
+            if (total > 0) x += gap + 1 * dp;
+            if (c != null) c.drawText(tail, x, base, soft);
+            x += soft.measureText(tail);
         }
         return x - x0;
     }
