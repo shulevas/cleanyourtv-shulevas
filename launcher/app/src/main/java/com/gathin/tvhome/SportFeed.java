@@ -69,7 +69,7 @@ final class SportFeed {
         final char kind;
         /** Sort key inside the day: local minutes, or 24*60+ for "time TBA". */
         final int order;
-        /** "20:00", "NB 20:00", "after match", "time TBA". */
+        /** "20:00", "after match", "time TBA" (a "not before" is shown as its time). */
         final String time;
         /** Bold part: "Shelton vs Norrie", "Brazilian GP", "Quarterfinals". */
         final String title;
@@ -625,7 +625,8 @@ final class SportFeed {
                     m.day = local.toLocalDate();
                     m.order = local.getHour() * 60 + local.getMinute();
                     String hm = String.format(Locale.ROOT, "%02d:%02d", local.getHour(), local.getMinute());
-                    m.timeLabel = slot.kind == OrderOfPlay.Kind.NOT_BEFORE ? "NB " + hm : hm;
+                    // "Not before" shows as the plain time: the list refetches, and a late court is no surprise.
+                    m.timeLabel = hm;
                 }
             } else if (m.timeValid && !m.court.isEmpty()) {
                 // No sheet: the first match on its court that day starts at ESPN's time; the others only follow.

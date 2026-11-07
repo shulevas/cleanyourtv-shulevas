@@ -554,16 +554,7 @@ final class SportCalendarView extends View {
 
     private void drawTime(Canvas c, String t, float x, float mid, int alpha) {
         if (t == null || t.isEmpty()) return;
-        if (t.startsWith("NB ")) {
-            timeSmall.setAlpha(alpha * 0x8C / 0xFF);
-            c.drawText("NB", x, mid - (time.ascent() + time.descent()) / 2, timeSmall);
-            float w = timeSmall.measureText("NB") + 3 * dp;
-            time.setAlpha(alpha);
-            c.drawText(t.substring(3), x + w, mid - (time.ascent() + time.descent()) / 2, time);
-            timeSmall.setColor(0x8CFFFFFF);
-            time.setAlpha(255);
-            return;
-        }
+        if (t.startsWith("NB ")) t = t.substring(3);   // an older cache's "not before"
         if (Character.isDigit(t.charAt(0))) {
             time.setAlpha(alpha);
             c.drawText(t, x, mid - (time.ascent() + time.descent()) / 2, time);
