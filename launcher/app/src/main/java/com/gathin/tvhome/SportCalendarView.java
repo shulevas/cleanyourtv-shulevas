@@ -276,7 +276,7 @@ final class SportCalendarView extends View {
     /**
      * How many rows each day gets on the one page. Yesterday, today and tomorrow always have a place (two rows
      * each at least, one when even that is too much); then today fills up, then tomorrow, then yesterday; the
-     * week's other days come after, nearest first, with what room is left.
+     * week's other days come after, nearest first, each only when it fits whole.
      */
     private static Map<LocalDate, Integer> allot(Map<LocalDate, List<Row>> groups, LocalDate today, float room,
                                                  float rowH, float gap) {
@@ -311,9 +311,10 @@ final class SportCalendarView extends View {
             long da = Math.abs(a.toEpochDay() - today.toEpochDay()), db = Math.abs(b.toEpochDay() - today.toEpochDay());
             return da != db ? Long.compare(da, db) : b.compareTo(a);   // the day ahead before the day behind
         });
+        // The other days only whole: one match of eight from the day before yesterday says little.
         for (LocalDate d : rest) {
-            int k = Math.min(groups.get(d).size(), (int) Math.floor((room - used - gap) / rowH + 1e-3));
-            if (k <= 0) continue;
+            int k = groups.get(d).size();
+            if (used + gap + k * rowH > room + 1e-3) continue;
             n.put(d, k);
             used += gap + k * rowH;
         }
