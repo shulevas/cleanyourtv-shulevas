@@ -439,8 +439,6 @@ final class SportCalendarView extends View {
 
     /** dp between the result and the names when a long score widens the time column. */
     private static final float STATUS_GAP = 10;
-    /** Above this width (dp) a score drops its tie-break points: 7-6 instead of 7-6(5). */
-    private static final float SCORE_MAX_W = 118;
     /** A past day's result stays brighter than its dimmed names: it is what the row is for. */
     private static final int RESULT_DIM_ALPHA = 200;
 
@@ -450,8 +448,8 @@ final class SportCalendarView extends View {
 
     /**
      * Draws a result at x (or only measures it when c is null) and returns its width. F1: "P1" small and dim, like
-     * "NB", then the winner's code. Tennis: the sets in the time's font, tie-break points smaller and dim right
-     * after their set, "ret." and "w/o" dim; tie-breaks are left out when the whole score would not fit.
+     * "NB", then the winner's code. Tennis: each set as games with a slash, sets apart by a dim dash, as TV
+     * graphics write it ("6/4 - 7/6 - 6/2"); no tie-break points; "ret." and "w/o" dim.
      */
     private float drawResult(Canvas c, Row row, float x, float mid, int alpha) {
         float base = mid - (time.ascent() + time.descent()) / 2;
@@ -467,42 +465,37 @@ final class SportCalendarView extends View {
             }
             return w + code.measureText(row.res);
         }
-        boolean tb = scoreWidth(row.res, true) <= SCORE_MAX_W * dp;
-        if (c == null) return scoreWidth(row.res, tb);
-        time.setAlpha(alpha);
-        soft.setAlpha(alpha * 0x8C / 0xFF);
-        float w = drawScore(c, row.res, tb, x, base);
+        if (c != null) {
+            time.setAlpha(alpha);
+            soft.setAlpha(alpha * 0x8C / 0xFF);
+        }
+        float w = drawScore(c, row.res, x, base);
         time.setAlpha(255);
         soft.setColor(0x8CFFFFFF);
         return w;
     }
 
-    private float scoreWidth(String res, boolean tb) {
-        return drawScore(null, res, tb, 0, 0);
-    }
-
-    private float drawScore(Canvas c, String res, boolean tb, float x0, float base) {
-        float x = x0, gap = 5 * dp;
+    private float drawScore(Canvas c, String res, float x0, float base) {
+        float x = x0, gap = 4 * dp;
         String[] sets = res.split(" ");
         for (int i = 0; i < sets.length; i++) {
             String set = sets[i];
-            if (i > 0) x += gap;
             if (set.equals("ret.") || set.equals("w/o")) {
+                if (i > 0) x += gap + 1 * dp;
                 if (c != null) c.drawText(set, x, base, soft);
                 x += soft.measureText(set);
                 continue;
             }
+            if (i > 0) {
+                x += gap;
+                if (c != null) c.drawText("-", x, base, soft);
+                x += soft.measureText("-") + gap;
+            }
+            // The cache keeps the tie-break points ("7-6(5)"); they are not shown.
             int b = set.indexOf('(');
-            String games = b > 0 ? set.substring(0, b) : set;
+            String games = (b > 0 ? set.substring(0, b) : set).replace('-', '/');
             if (c != null) c.drawText(games, x, base, time);
             x += time.measureText(games);
-            if (b > 0 && tb) {
-                // The tie-break points without brackets, small and raised a little: 7-6⁵.
-                String pts = set.substring(b + 1, set.length() - 1);
-                x += 0.5f * dp;
-                if (c != null) c.drawText(pts, x, base - 4 * dp, soft);
-                x += soft.measureText(pts);
-            }
         }
         return x - x0;
     }
