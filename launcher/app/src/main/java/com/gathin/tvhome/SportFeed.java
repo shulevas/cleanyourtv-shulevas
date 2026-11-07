@@ -52,7 +52,7 @@ final class SportFeed {
     private static final String TAG = "TvHomeSport";
     static final String CACHE = "sport.json";
     /** Bump when the rules or the marks change: an older cache is then refetched at once. */
-    static final int CACHE_VERSION = 5;
+    static final int CACHE_VERSION = 6;
     static final String OVERRIDE = "sport_tournaments.json";
     /** How old the cache may be before Home asks for a new one. */
     static final long STALE_MS = 3 * 60 * 60 * 1000L;
@@ -156,16 +156,17 @@ final class SportFeed {
         }
     }
 
-    /** The list's days: this week, plus yesterday on a Monday and tomorrow on a Sunday. */
+    /** The list's days: yesterday (what was missed), today, and up to a week ahead, across the week's end. */
     static LocalDate listFrom(LocalDate today) {
-        LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        return today.minusDays(1).isBefore(monday) ? today.minusDays(1) : monday;
+        return today.minusDays(1);
     }
 
     static LocalDate listTo(LocalDate today) {
-        LocalDate sunday = today.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY));
-        return today.plusDays(1).isAfter(sunday) ? today.plusDays(1) : sunday;
+        return today.plusDays(DAYS_AHEAD);
     }
+
+    /** How far ahead the list looks: what fits of it is shown, nearest days first. */
+    static final int DAYS_AHEAD = 7;
 
     static final int NO_RANK = 999;
     /** The rankings (ESPN, ATP and WTA top 150) are refetched once a week. */

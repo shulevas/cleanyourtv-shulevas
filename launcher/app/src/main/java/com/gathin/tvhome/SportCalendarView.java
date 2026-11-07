@@ -276,7 +276,7 @@ final class SportCalendarView extends View {
     /**
      * How many rows each day gets on the one page. Yesterday, today and tomorrow always have a place (two rows
      * each at least, one when even that is too much); then today fills up, then tomorrow, then yesterday; the
-     * week's other days come after, nearest first, each only when it fits whole.
+     * days ahead come after, nearest first, each only when it fits whole.
      */
     private static Map<LocalDate, Integer> allot(Map<LocalDate, List<Row>> groups, LocalDate today, float room,
                                                  float rowH, float gap) {
@@ -305,16 +305,12 @@ final class SportCalendarView extends View {
             n.put(d, n.get(d) + more);
             used += more * rowH;
         }
-        List<LocalDate> rest = new ArrayList<>(groups.keySet());
-        rest.removeAll(must);
-        rest.sort((a, b) -> {
-            long da = Math.abs(a.toEpochDay() - today.toEpochDay()), db = Math.abs(b.toEpochDay() - today.toEpochDay());
-            return da != db ? Long.compare(da, db) : b.compareTo(a);   // the day ahead before the day behind
-        });
-        // The other days only whole: one match of eight from the day before yesterday says little.
-        for (LocalDate d : rest) {
+        // The days after tomorrow (groups holds no day before yesterday), nearest first, each only whole, and
+        // none after the first that does not fit, so the list never skips a day.
+        for (LocalDate d : groups.keySet()) {
+            if (!d.isAfter(today.plusDays(1))) continue;
             int k = groups.get(d).size();
-            if (used + gap + k * rowH > room + 1e-3) continue;
+            if (used + gap + k * rowH > room + 1e-3) break;
             n.put(d, k);
             used += gap + k * rowH;
         }
@@ -352,7 +348,7 @@ final class SportCalendarView extends View {
         Map<LocalDate, List<Row>> groups = groups(today);
         if (groups.isEmpty()) {
             soft.setAlpha(140);
-            c.drawText("No races or matches this week", listLeft, listTop - soft.ascent(), soft);
+            c.drawText("No races or matches in the days ahead", listLeft, listTop - soft.ascent(), soft);
             soft.setColor(0x8CFFFFFF);
             return;
         }
