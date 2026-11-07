@@ -140,7 +140,8 @@
          that applies a volume key before the filter and again when the helper hands it back, so one tap moves two
          steps (TCL G03 / BeyondTV4 on Android 11, #1100); a swallowed key gets no auto-repeat from Android, hence
          the helper's own. Leave it off where a tap is one step. A theme can set it ("consume_volume_keys"). -->
-    <bool name="consume_volume_keys">false</bool>
+    <!-- This fork: true, the TCL G05 (Android 11) stepped two at a time with InputKeyService on. -->
+    <bool name="consume_volume_keys">true</bool>
 
     <!-- Vendor source numbers for the Inputs menu, "HW<n>=<number>" by the framework input id's last part
          (`tools/tv.py 'dumpsys tv_input'` lists them). A mapped input opens by sending input_action with the
@@ -221,6 +222,9 @@
          where the firmware hands KEYCODE_GUIDE (172) to the stock launcher and no app ever receives it. Leave empty
          to omit. -->
     <string-array name="app_keys" translatable="false">
+        <!-- This fork, TCL RC902V remote: YouTube (4065) opens SmartTube, Netflix (4062) opens Lampa. -->
+        <item>4065:org.smarttube.stable</item>
+        <item>4062:top.rootu.lampa</item>
     </string-array>
 
     <!-- Package of the stock launcher, for TVs whose firmware turns it back on after it was disabled. XGIMI's
