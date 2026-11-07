@@ -7,7 +7,6 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.os.SystemClock;
 import android.view.View;
 
 import java.time.DayOfWeek;
@@ -50,10 +49,6 @@ final class SportCalendarView extends View {
     private SportFeed.Data data = SportFeed.Data.EMPTY;
     private float gridLeft, gridTop, listLeft, listTop, listRight;
     private boolean anchored;
-    private long pageStart = SystemClock.elapsedRealtime();
-    /** Seconds per page when the week does not fit. */
-    private static final long PAGE_MS = 15_000;
-    private int pages = 1;
     /** sport_f1_podium: a finished race also lists P2 and P3 after its name. */
     private boolean podium;
 
@@ -95,7 +90,6 @@ final class SportCalendarView extends View {
 
     void setData(SportFeed.Data d) {
         data = d != null ? d : SportFeed.Data.EMPTY;
-        pageStart = SystemClock.elapsedRealtime();
         invalidate();
     }
 
@@ -112,13 +106,9 @@ final class SportCalendarView extends View {
         invalidate();
     }
 
-    /** Called once a minute and on each page turn: a new day, a new page. */
+    /** Called once a minute: a new day redraws the week. */
     void tick() {
         invalidate();
-    }
-
-    long pageMs() {
-        return pages > 1 ? PAGE_MS : 0;
     }
 
     @Override
@@ -317,41 +307,18 @@ final class SportCalendarView extends View {
             soft.setAlpha(140);
             c.drawText("No races or matches this week", listLeft, listTop - soft.ascent(), soft);
             soft.setColor(0x8CFFFFFF);
-            pages = 1;
             return;
         }
         float rowH = ROW_H * dp, gap = GROUP_GAP * dp;
-        // Pages of whole days, the page with today first when the week does not fit.
-        List<List<LocalDate>> pageList = new ArrayList<>();
-        List<LocalDate> cur = new ArrayList<>();
-        float used = 0, room = bottom - listTop;
-        for (Map.Entry<LocalDate, List<Row>> e : groups.entrySet()) {
-            float h = e.getValue().size() * rowH + gap;
-            if (!cur.isEmpty() && used + h - gap > room) {
-                pageList.add(cur);
-                cur = new ArrayList<>();
-                used = 0;
-            }
-            cur.add(e.getKey());
-            used += h;
-        }
-        if (!cur.isEmpty()) pageList.add(cur);
-        pages = pageList.size();
-        int page = 0;
-        if (pages > 1) {
-            // Start the rotation at the page holding today (or the next day with something).
-            int todayPage = 0;
-            search:
-            for (int p = 0; p < pages; p++) {
-                for (LocalDate d : pageList.get(p)) {
-                    if (!d.isBefore(today)) {
-                        todayPage = p;
-                        break search;
-                    }
-                }
-            }
-            long elapsed = SystemClock.elapsedRealtime() - pageStart;
-            page = (int) ((todayPage + elapsed / PAGE_MS) % pages);
+        // One page, never turning: when the week does not fit, the oldest past days go first, whole; if it still
+        // does not fit, the furthest days ahead. Today always stays.
+        List<LocalDate> shown = new ArrayList<>(groups.keySet());
+        float room = bottom - listTop;
+        while (shown.size() > 1 && height(groups, shown, rowH, gap) > room) {
+            LocalDate first = shown.get(0), last = shown.get(shown.size() - 1);
+            if (first.isBefore(today)) shown.remove(0);
+            else if (!last.equals(today)) shown.remove(shown.size() - 1);
+            else break;
         }
         float y = listTop;
         float pillW = PILL_W * dp;
@@ -360,13 +327,13 @@ final class SportCalendarView extends View {
         // A long score (four or five sets) widens the time column for the whole page, so the names stay in one
         // straight column instead of jumping from row to row.
         float statusW = TIME_W * dp;
-        for (LocalDate d : pageList.get(page)) {
+        for (LocalDate d : shown) {
             for (Row row : groups.get(d)) {
                 if (!row.res.isEmpty()) statusW = Math.max(statusW, resultWidth(row) + STATUS_GAP * dp);
             }
         }
         float textX = timeX + statusW;
-        for (LocalDate d : pageList.get(page)) {
+        for (LocalDate d : shown) {
             List<Row> rows = groups.get(d);
             float h = rows.size() * rowH;
             boolean isToday = d.equals(today);
@@ -425,12 +392,12 @@ final class SportCalendarView extends View {
             }
             y += gap;
         }
-        if (pages > 1) {
-            String marker = (page + 1) + " / " + pages;
-            timeSmall.setTextAlign(Paint.Align.RIGHT);
-            c.drawText(marker, listRight, bottom - timeSmall.descent(), timeSmall);
-            timeSmall.setTextAlign(Paint.Align.LEFT);
-        }
+    }
+
+    private static float height(Map<LocalDate, List<Row>> groups, List<LocalDate> days, float rowH, float gap) {
+        float h = 0;
+        for (LocalDate d : days) h += groups.get(d).size() * rowH + gap;
+        return h - gap;
     }
 
     private static final String[][] ROUNDS = {{"Quarterfinals", "QF"}, {"Semifinals", "SF"}, {"Round of 16", "R16"},

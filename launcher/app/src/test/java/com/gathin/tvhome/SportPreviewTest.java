@@ -129,22 +129,14 @@ public class SportPreviewTest {
         v.layout(0, 0, 1920, 1080);
         v.anchor(115, 233, 600, 158, 1370);
         Bitmap clean = bmp.copy(Bitmap.Config.ARGB_8888, true);
-        // Every page of the list: the view turns a page each PAGE_MS.
-        int page = 1;
-        do {
-            Bitmap pageBmp = clean.copy(Bitmap.Config.ARGB_8888, true);
-            Canvas c = new Canvas(pageBmp);
-            c.save();
-            c.clipRect(L, T, R, B);
-            v.draw(c);
-            c.restore();
-            String file = page == 1 ? name : name.replace(".png", "-p" + page + ".png");
-            try (FileOutputStream out = new FileOutputStream(new File(dir, file))) {
-                pageBmp.compress(Bitmap.CompressFormat.PNG, 100, out);
-            }
-            if (v.pageMs() == 0) break;
-            org.robolectric.shadows.ShadowSystemClock.advanceBy(java.time.Duration.ofMillis(v.pageMs()));
-        } while (++page <= 2);
+        Canvas c = new Canvas(clean);
+        c.save();
+        c.clipRect(L, T, R, B);
+        v.draw(c);
+        c.restore();
+        try (FileOutputStream out = new FileOutputStream(new File(dir, name))) {
+            clean.compress(Bitmap.CompressFormat.PNG, 100, out);
+        }
         // The grid too, without the screenshot, to check the positions against it.
         Bitmap full = Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888);
         full.eraseColor(0xFF161616);

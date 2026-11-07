@@ -2659,8 +2659,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private void schedulePage() {
         handler.removeCallbacks(sportPage);
-        long ms = sportView != null ? sportView.pageMs() : 0;
-        handler.postDelayed(sportPage, ms > 0 ? ms : MINUTE_MS);
+        handler.postDelayed(sportPage, MINUTE_MS);
     }
 
     /** Centre the one-row header when the greeting and extra date lines are absent (#2265). */
